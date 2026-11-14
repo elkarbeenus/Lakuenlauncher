@@ -1,13 +1,14 @@
 {
   "name": "lakuenlauncher",
-  "version": "0.1.0",
   "private": true,
-  "description": "LakuenLauncher – lokaler Spiele- und App-Launcher für SteamOS und Linux",
-  "license": "MIT",
+  "version": "0.1.0",
+  "description": "LakuenLauncher – lokaler Spiele- und App-Launcher für SteamOS/Linux",
+  "type": "module",
   "scripts": {
     "tauri": "tauri",
     "dev": "tauri dev",
-    "build": "tauri build"
+    "build": "tauri build --bundles appimage deb",
+    "preview": "python3 -m http.server 5173 --directory src"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"

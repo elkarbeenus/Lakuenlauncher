@@ -1,15 +1,13 @@
 {
   "name": "Sakura Neon",
   "author": "LakuenLauncher",
-  "type": "dark",
+  "mode": "dark",
   "colors": {
     "bg": "#0f0b1a",
     "bg2": "#0a0713",
-    "surface": "#1a1330",
-    "surface2": "#251b42",
-    "border": "#33265a",
+    "panel": "#1a1330",
     "text": "#fbf3ff",
-    "muted": "#b3a3d1",
+    "dim": "#b3a3d1",
     "accent": "#ff4fa3",
     "accent2": "#4fe3ff"
   }

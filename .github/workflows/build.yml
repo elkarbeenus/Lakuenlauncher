@@ -1,0 +1,96 @@
+name: Build & Release
+
+# - Push auf main: AppImage bauen (als Artefakt zum Testen)
+# - Tag v* (z. B. v0.1.0): bauen + GitHub-Release mit Patchnotes aus CHANGELOG.md
+# - Manuell über den Actions-Tab
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    # Ubuntu 22.04 = ältere glibc -> AppImage läuft auch auf SteamOS
+    runs-on: ubuntu-22.04
+    timeout-minutes: 50
+    steps:
+      - name: Code auschecken
+        uses: actions/checkout@v4
+
+      - name: System-Abhängigkeiten für Tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev libgtk-3-dev file
+
+      - name: Node.js einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Rust einrichten
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust-Build-Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Node-Pakete installieren
+        run: npm install
+
+      - name: AppImage und .deb bauen
+        run: |
+          set -o pipefail
+          npx tauri build --bundles appimage deb 2>&1 | tee build.log
+
+      - name: Fehlerprotokoll auf Branch ci-logs ablegen
+        if: failure()
+        run: |
+          mkdir -p /tmp/ci-logs
+          cp build.log /tmp/ci-logs/build.log 2>/dev/null || echo "kein build.log" > /tmp/ci-logs/build.log
+          echo "${GITHUB_SHA} ${GITHUB_REF}" > /tmp/ci-logs/info.txt
+          cd /tmp/ci-logs
+          git init -q -b ci-logs
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -A
+          git commit -qm "Build-Log ${GITHUB_SHA}"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" ci-logs
+
+      - name: Dateien hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: LakuenLauncher-linux
+          path: |
+            src-tauri/target/release/bundle/appimage/*.AppImage
+            src-tauri/target/release/bundle/deb/*.deb
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Patchnotes aus CHANGELOG.md
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v v="[$VERSION]" '/^## /{p = index($0, v) > 0; if (p) next} p' CHANGELOG.md > release-notes.md
+          [ -s release-notes.md ] || echo "LakuenLauncher ${GITHUB_REF_NAME}" > release-notes.md
+          cat release-notes.md
+
+      - name: GitHub-Release erstellen
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: LakuenLauncher ${{ github.ref_name }}
+          body_path: release-notes.md
+          make_latest: true
+          files: |
+            src-tauri/target/release/bundle/appimage/*.AppImage
+            src-tauri/target/release/bundle/deb/*.deb
+          fail_on_unmatched_files: true

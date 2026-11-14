@@ -1,104 +1,149 @@
 <p align="center">
-  <img src="ui/assets/logo.svg" width="120" alt="LakuenLauncher Logo">
+  <img src="src/assets/logo.svg" width="120" alt="LakuenLauncher Logo">
 </p>
 
 <h1 align="center">LakuenLauncher</h1>
 
 <p align="center">
-  Lokaler Spiele- und App-Launcher für SteamOS und Linux.<br>
-  AppImages und Windows-Spiele (.exe über Proton) an einem Ort – mit eigenem Artwork und Spielzeit-Statistik.<br>
-  <sub>erstellt von Dominic Lesina x Claude</sub>
+  Dein Paradies (楽園, <i>Rakuen</i>) für Spiele & Apps unter SteamOS und Linux.<br>
+  AppImages und Windows-Spiele an einem Ort – mit eigenem Artwork, Spielzeit-Statistik und ohne Konto.<br>
+  <b>erstellt von Dominic Lesina x Claude</b>
+</p>
+
+<p align="center">
+  <a href="https://github.com/elkarbeenus/Lakuenlauncher/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/elkarbeenus/Lakuenlauncher?color=ff6fae&label=Version"></a>
+  <img alt="Plattform" src="https://img.shields.io/badge/SteamOS%20%2F%20Linux-AppImage-9b5cff">
+  <img alt="Lizenz" src="https://img.shields.io/badge/Lizenz-MIT-3ddc97">
 </p>
 
 ---
 
 ## Funktionen
 
-**Bibliothek**
-- AppImages, Windows-Spiele (.exe) und Linux-Programme hinzufügen: per Dateiauswahl, **Drag & Drop** oder **Ordner-Scan**
-- Eigene Anzeigenamen, Sammlungen, Favoriten, Notizen, Ausblenden
-- Eigenes Artwork pro Spiel: **Cover, Banner, Logo, Icon** (wie bei Nicht-Steam-Spielen in Steam) – ohne Artwork entsteht automatisch ein schönes Cover
-- Raster- und Listenansicht, Kartengröße einstellbar, Sortierung nach zuletzt gespielt / Name / Spielzeit / hinzugefügt
-- Bühne „Weiterspielen“ mit dem zuletzt gespielten Spiel
+| | |
+|---|---|
+| 🎮 **Alles an einem Ort** | AppImages, Linux-Programme und Windows-Spiele (.exe) verwalten und starten |
+| 🍷 **Proton eingebaut** | .exe-Dateien starten mit der neuesten Proton-Version oder Proton Experimental – automatisch erkannt (Steam, GE-Proton, Flatpak) |
+| 🖼️ **Eigenes Artwork** | Cover, Banner, Logo und Icon pro Spiel – wie bei Nicht-Steam-Spielen in Steam. Bilder einfach ins Fenster ziehen |
+| ⏱️ **Spielzeit & Statistik** | Zählt nur Starts über den Launcher. Verlauf, Aktivitätskalender, Top-Spiele, Serien |
+| 🔍 **Schnell** | Strg+K-Befehlspalette, Drag & Drop, Ordner-Scan, beobachtete Ordner, Tastenkürzel, Controller |
+| 🎨 **Themes** | 8 dunkle + 3 helle Themes, eigene Akzentfarbe, **externe Themes per JSON** |
+| 🔔 **Updates** | Prüft die GitHub-Releases und meldet neue Versionen per Benachrichtigung |
+| 🔒 **Privat** | Kein Konto, keine Telemetrie. Alles bleibt lokal auf deinem Gerät |
 
-**Starten**
-- `.exe` automatisch über **Proton Experimental** oder die **neueste Proton-Version** (offiziell, GE-Proton und eigene Versionen werden erkannt, auch Steam-Bibliotheken auf SD-Karte)
-- Start über **umu-launcher**, wenn installiert (sonst direkt über Proton)
-- Eigener Wine-Prefix pro Spiel, winecfg und winetricks direkt aus dem Launcher
-- Startoptionen wie in Steam inkl. `%command%`, Umgebungsvariablen, Arbeitsordner
-- Schalter für **MangoHud**, **GameMode** und **FSR**
-- Skripte vor dem Start und nach dem Beenden
-- Startprotokoll pro Spiel zur Fehlersuche
-- Desktop-/Menü-Verknüpfungen, die über den Launcher starten (lassen sich als Nicht-Steam-Spiel in Steam eintragen)
-
-**Spielzeit**
-- Gezählt wird **nur**, was über den Launcher gestartet wurde (inklusive aller Unterprozesse von Proton)
-- Spielzeit pro Spiel, Sitzungsliste, Diagramm der letzten 30 Tage
-- Statistik: Spielzeit pro Tag/Woche/Monat, Aktivitätskalender, meistgespielte Spiele, Tageszeit, längste Sitzung, Serie
-
-**Komfort**
-- Schnellsuche mit <kbd>Strg</kbd>+<kbd>K</kbd> – Spiel tippen, Enter, läuft
-- Tastatursteuerung mit Pfeiltasten (praktisch am Steam Deck)
-- 9 eingebaute Themes (dunkel und hell, inkl. OLED-Schwarz), eigene Akzentfarbe, **externe Themes** als JSON
-- Einführung beim ersten Start, jederzeit in den Einstellungen erneut abrufbar
-- Update-Prüfung über GitHub-Releases mit Desktop-Benachrichtigung
-- Sicherung exportieren/importieren
-
-**Datenschutz**
-- Kein Konto, keine Anmeldung, keine Telemetrie
-- Alle Daten liegen lokal unter `~/.local/share/de.lesina.lakuenlauncher/`
-- Die einzige Netzwerkverbindung ist die (abschaltbare) Update-Prüfung bei GitHub
+Weitere Komfortfunktionen: Sammlungen, Favoriten, Ausblenden, „Weiterspielen“-Banner, eigener Wine-Prefix pro Spiel, winecfg/winetricks-Knöpfe, MangoHud/GameMode/FSR/gamescope pro Spiel, Umgebungsvariablen, Skripte vor/nach dem Start, Startprotokoll, Desktop-Verknüpfungen, Export/Import und tägliche Sicherungen, Tutorial beim ersten Start.
 
 ## Installation (SteamOS / Linux)
 
-1. Unter [Releases](https://github.com/elkarbeenus/Lakuenlauncher/releases) die Datei `LakuenLauncher_x.y.z_amd64.AppImage` herunterladen.
-2. Ausführbar machen: Rechtsklick → Eigenschaften → Berechtigungen → „Ausführbar“, oder im Terminal
+1. Die neueste `LakuenLauncher_x.y.z_amd64.AppImage` von den [Releases](https://github.com/elkarbeenus/Lakuenlauncher/releases/latest) herunterladen.
+2. Ausführbar machen: Rechtsklick → Eigenschaften → Berechtigungen → „Ausführbar“ – oder im Terminal:
    ```bash
-   chmod +x LakuenLauncher_*_amd64.AppImage
+   chmod +x LakuenLauncher_*.AppImage
    ```
-3. Doppelklick zum Starten.
+3. Doppelklick zum Starten. Fertig.
 
-**Für Windows-Spiele** wird Proton aus Steam benötigt (z. B. „Proton Experimental“ unter Bibliothek → Tools installieren). Empfohlen, aber optional: [umu-launcher](https://github.com/Open-Wine-Components/umu-launcher).
+**Update:** Der Launcher meldet neue Versionen. Einfach die alte AppImage durch die neue ersetzen – Bibliothek, Artwork und Statistik bleiben erhalten.
 
-**Im Gaming-Modus:** Im Desktop-Modus über „Verknüpfung anlegen“ einen Menüeintrag erstellen und ihn in Steam über „Spiel hinzufügen → Nicht-Steam-Spiel hinzufügen“ eintragen.
+### Für Windows-Spiele
 
-## Eigene Themes
+Mindestens eine Proton-Version muss installiert sein:
+- In Steam: Bibliothek → Werkzeuge → **Proton Experimental** (oder Proton 10) installieren, oder
+- **GE-Proton** mit [ProtonUp-Qt](https://davidotek.github.io/protonup-qt/) installieren.
 
-Siehe [docs/THEMES.md](docs/THEMES.md) – ein Beispiel liegt unter [themes/beispiel-sakura-neon.json](themes/beispiel-sakura-neon.json).
+Optional, aber empfohlen: [umu-launcher](https://github.com/Open-Wine-Components/umu-launcher). Ist er installiert, nutzt LakuenLauncher ihn automatisch.
+
+**Startmethoden** (Einstellungen → Start & Proton):
+
+| Methode | Beschreibung |
+|---|---|
+| Automatisch | umu-launcher falls vorhanden, sonst Proton in der Steam Linux Runtime, sonst Proton direkt |
+| umu-launcher | Proton im Steam-Runtime-Container inkl. Spiel-Fixes (protonfixes) |
+| Proton + Steam Runtime | wie Steam selbst: Proton in der Steam Linux Runtime (sniper) |
+| Proton direkt | Proton-Skript ohne Container |
+
+## Bedienung
+
+- **Hinzufügen:** Knopf „Hinzufügen“, Strg+N, Dateien ins Fenster ziehen oder einen Ordner durchsuchen lassen (Strg+Umschalt+N)
+- **Starten:** Play-Knopf, Doppelklick, Leertaste oder Controller-A
+- **Bearbeiten:** Rechtsklick → Bearbeiten (Name, Artwork, Proton, Startoptionen)
+- **Schnellsuche:** Strg+K – Spiel tippen, Enter, los geht’s
+- **In Steam einbinden:** Rechtsklick → „Verknüpfung erstellen“, dann in Steam „Ein Nicht-Steam-Spiel hinzufügen“. Die Spielzeit zählt auch dann im Launcher.
+
+## Externe Themes
+
+Eigene Themes sind einfache JSON-Dateien. Einstellungen → Darstellung → „Vorlage speichern“, Farben anpassen, „Theme importieren“. Beispiel: [`themes/beispiel-theme.json`](themes/beispiel-theme.json)
+
+```json
+{
+  "name": "Mein Theme",
+  "author": "Dein Name",
+  "mode": "dark",
+  "colors": {
+    "bg": "#0c0a12", "bg2": "#13101c", "panel": "#1a1526",
+    "text": "#f4f0fa", "dim": "#a59db8",
+    "accent": "#ff6fae", "accent2": "#9b5cff"
+  },
+  "onAccent": "#ffffff",
+  "css": "/* optional: eigenes CSS */"
+}
+```
+
+Pflicht sind `bg`, `panel`, `text` und `accent`. `mode` ist `dark` oder `light`.
+
+## Datenschutz
+
+LakuenLauncher braucht **kein Konto** und sendet **keine Daten**. Alles liegt lokal unter
+`~/.local/share/de.lakuen.launcher/` (Bibliothek, Einstellungen, Spielzeiten, Artwork, Prefixe, Protokolle, Sicherungen).
+Die einzige Internetverbindung ist die optionale Update-Prüfung bei der GitHub-API – abschaltbar in den Einstellungen.
 
 ## Selbst bauen
 
-Voraussetzungen: Rust (stable), Node.js 20+, unter Linux zusätzlich `libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf`.
+Voraussetzungen: Rust (stable), Node.js 20+, Tauri-Abhängigkeiten (`libwebkit2gtk-4.1-dev`, `librsvg2-dev`, `patchelf` …).
 
 ```bash
 npm install
 npm run dev      # Entwicklungsmodus
-npm run build    # AppImage unter src-tauri/target/release/bundle/appimage/
+npm run build    # AppImage + .deb unter src-tauri/target/release/bundle/
+npm run preview  # Nur Oberfläche im Browser (Demo-Modus mit Beispieldaten)
 ```
 
-Die Oberfläche (`ui/`) ist reines HTML/CSS/JavaScript ohne Build-Schritt. Im Browser geöffnet (z. B. `python3 -m http.server` im Ordner `ui`) läuft sie mit Beispieldaten.
+Releases baut GitHub Actions automatisch, sobald ein Tag `v*` gepusht wird.
 
-## Releases
-
-Ein Tag `vX.Y.Z` startet den GitHub-Workflow, der das AppImage baut und mit den Notizen aus `CHANGELOG.md` veröffentlicht. Die Update-Prüfung im Launcher liest genau diese Releases.
-
-## Projektaufbau
+### Aufbau
 
 ```
-ui/                 Oberfläche (HTML, CSS, JavaScript-Module)
-src-tauri/src/
-  lib.rs            Einstieg, Befehle, Single-Instance
-  storage.rs        lokale JSON-Daten, Artwork, Themes
-  proton.rs         Proton-/Werkzeug-Erkennung
-  launcher.rs       Starten, Beenden, Spielzeit messen
-  platform.rs       Betriebssystem-spezifisches (Linux fertig, Windows vorbereitet)
-.github/workflows/  CI und Release-Build
+src/              Oberfläche (HTML/CSS/JavaScript, ohne Build-Schritt)
+  js/app.js       Start, Navigation, Tastenkürzel, Drag & Drop
+  js/library.js   Bibliothek & Detailseite
+  js/editor.js    Spiel-Editor (Name, Artwork, Proton, Optionen)
+  js/stats.js     Statistik
+  js/settings.js  Einstellungen
+  js/extras.js    Befehlspalette, Tutorial, Controller
+src-tauri/src/    Rust-Backend
+  runner.rs       Starten (AppImage / umu / Steam Runtime / Proton), Spielzeit-Messung
+  proton.rs       Proton- & Steam-Runtime-Erkennung
+  scan.rs         Ordner-Scan
+  store.rs        Lokale JSON-Ablage, Artwork, Sicherungen
+  platform.rs     System-Hilfen (Linux; Windows vorbereitet)
 ```
 
-## Windows
+## Fahrplan
 
-Die Grundlagen sind gelegt: Alles Betriebssystem-Spezifische steckt in `platform.rs` bzw. hinter `cfg(windows)`. Unter Windows werden .exe-Dateien direkt gestartet. Der Release-Workflow enthält bereits einen (noch auskommentierten) Windows-Build.
+- Windows-Version (.exe-Setup) – die Grundlagen sind im Code bereits vorbereitet
+- Optionale Cover-Suche (z. B. SteamGridDB mit eigenem API-Key)
+- Direktes Selbst-Update der AppImage
+- Vollbild-/Gaming-Modus für das Steam Deck
+- Mehrsprachigkeit
+
+## Danke & Inspiration
+
+- [Tauri](https://tauri.app) (MIT/Apache-2.0)
+- [Valve Proton](https://github.com/ValveSoftware/Proton) & Steam Linux Runtime
+- [umu-launcher](https://github.com/Open-Wine-Components/umu-launcher) – wird nur aufgerufen, falls installiert (kein Code übernommen)
+- Inspiration: [Playnite](https://github.com/JosefNemec/Playnite) (MIT), [clear](https://github.com/adithyasource/clear) (Unlicense)
+
+Logo und Icons sind eigene Entwürfe.
 
 ## Lizenz
 
-MIT – siehe [LICENSE](LICENSE). Logo und Oberfläche sind eigene Entwürfe.
+[MIT](LICENSE) © 2026 Dominic Lesina x Claude

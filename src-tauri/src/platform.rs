@@ -1,83 +1,99 @@
-//! Betriebssystem-spezifische Funktionen.
-//! Linux/SteamOS ist vollständig umgesetzt, Windows ist vorbereitet.
-
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+//! Betriebssystem-spezifische Hilfen. Linux/SteamOS ist das Hauptziel,
+//! Windows ist über die cfg-Zweige vorbereitet.
 
 use serde::Serialize;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use tauri::AppHandle;
 
-use crate::proton;
-use crate::storage::safe_name;
-
-/// Wird vor dem Start der Oberfläche aufgerufen.
-pub fn prepare_environment() {
-    #[cfg(target_os = "linux")]
-    {
-        // Verhindert leere/weiße Fenster mit WebKitGTK auf manchen GPU-Treibern.
-        if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
-            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-            std::env::set_var("LAKUEN_SET_DMABUF", "1");
-        }
-    }
+pub fn home() -> PathBuf {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/"))
 }
 
-/// Entfernt Umgebungsvariablen, die das AppImage des Launchers selbst gesetzt hat,
-/// damit gestartete Spiele (insbesondere Proton) nicht die Bibliotheken des
-/// Launchers erben.
+/// Sucht ein Programm im PATH (ohne Ordner aus dem eigenen AppImage).
+pub fn which(name: &str) -> Option<PathBuf> {
+    let mut dirs: Vec<PathBuf> = std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).collect())
+        .unwrap_or_default();
+    let h = home();
+    dirs.push(h.join(".local/bin"));
+    dirs.push(PathBuf::from("/usr/local/bin"));
+    dirs.push(PathBuf::from("/usr/bin"));
+    let appdir = std::env::var("APPDIR").ok();
+    for d in dirs {
+        if let Some(a) = &appdir {
+            if d.starts_with(a) {
+                continue;
+            }
+        }
+        let p = d.join(name);
+        if p.is_file() {
+            return Some(p);
+        }
+        #[cfg(windows)]
+        {
+            let pe = d.join(format!("{name}.exe"));
+            if pe.is_file() {
+                return Some(pe);
+            }
+        }
+    }
+    None
+}
+
+/// Entfernt Umgebungsvariablen, die das AppImage des Launchers setzt und die
+/// gestartete Spiele/AppImages durcheinanderbringen würden.
 pub fn sanitize_env(cmd: &mut Command) {
     #[cfg(target_os = "linux")]
     {
-        if std::env::var_os("LAKUEN_SET_DMABUF").is_some() {
-            cmd.env_remove("WEBKIT_DISABLE_DMABUF_RENDERER");
-        }
-        cmd.env_remove("LAKUEN_SET_DMABUF");
-
-        let appdir = match std::env::var("APPDIR") {
-            Ok(d) if !d.is_empty() => d,
-            _ => return,
-        };
-        let path_lists = [
+        const DROP: &[&str] = &[
             "LD_LIBRARY_PATH",
-            "PATH",
-            "XDG_DATA_DIRS",
-            "XDG_CONFIG_DIRS",
-            "GST_PLUGIN_PATH",
-            "GST_PLUGIN_SYSTEM_PATH",
-            "GST_PLUGIN_SYSTEM_PATH_1_0",
-            "GST_PLUGIN_SCANNER",
-            "GSETTINGS_SCHEMA_DIR",
             "GDK_PIXBUF_MODULE_FILE",
             "GDK_PIXBUF_MODULEDIR",
-            "GIO_MODULE_DIR",
+            "GDK_BACKEND",
             "GTK_PATH",
-            "GTK_DATA_PREFIX",
             "GTK_EXE_PREFIX",
+            "GTK_DATA_PREFIX",
             "GTK_IM_MODULE_FILE",
+            "GTK_THEME",
+            "GIO_MODULE_DIR",
+            "GIO_EXTRA_MODULES",
+            "GSETTINGS_SCHEMA_DIR",
+            "GST_PLUGIN_SYSTEM_PATH",
+            "GST_PLUGIN_SYSTEM_PATH_1_0",
+            "GST_PLUGIN_PATH",
+            "GST_PLUGIN_PATH_1_0",
+            "GST_PLUGIN_SCANNER",
+            "GST_PLUGIN_SCANNER_1_0",
+            "GST_REGISTRY",
+            "GST_REGISTRY_1_0",
             "PYTHONHOME",
             "PYTHONPATH",
             "PERLLIB",
             "QT_PLUGIN_PATH",
-            "LIBGL_DRIVERS_PATH",
+            "APPDIR",
+            "APPIMAGE",
+            "ARGV0",
+            "OWD",
+            "WEBKIT_DISABLE_DMABUF_RENDERER",
+            "WEBKIT_EXEC_PATH",
         ];
-        for var in path_lists {
-            if let Ok(value) = std::env::var(var) {
-                if !value.contains(&appdir) {
-                    continue;
-                }
-                let kept: Vec<&str> = value
-                    .split(':')
-                    .filter(|p| !p.is_empty() && !p.starts_with(&appdir))
-                    .collect();
-                if kept.is_empty() {
-                    cmd.env_remove(var);
-                } else {
-                    cmd.env(var, kept.join(":"));
+        for k in DROP.iter() {
+            cmd.env_remove(k);
+        }
+        if let Ok(appdir) = std::env::var("APPDIR") {
+            for k in ["PATH", "XDG_DATA_DIRS", "XDG_CONFIG_DIRS"] {
+                if let Ok(v) = std::env::var(k) {
+                    let kept: Vec<&str> = v
+                        .split(':')
+                        .filter(|p| !p.is_empty() && !p.starts_with(&appdir))
+                        .collect();
+                    cmd.env(k, kept.join(":"));
                 }
             }
-        }
-        for var in ["APPDIR", "APPIMAGE", "ARGV0", "OWD", "GDK_BACKEND", "GTK_THEME"] {
-            cmd.env_remove(var);
         }
     }
     #[cfg(not(target_os = "linux"))]
@@ -86,87 +102,70 @@ pub fn sanitize_env(cmd: &mut Command) {
     }
 }
 
-/// Setzt das Ausführungsrecht (z. B. für frisch heruntergeladene AppImages).
+#[cfg(unix)]
+pub fn shell(script: &str) -> Command {
+    let mut c = Command::new("sh");
+    c.arg("-c").arg(script);
+    sanitize_env(&mut c);
+    c
+}
+
+#[cfg(windows)]
+pub fn shell(script: &str) -> Command {
+    let mut c = Command::new("cmd");
+    c.arg("/C").arg(script);
+    c
+}
+
+#[cfg(unix)]
 pub fn ensure_executable(path: &Path) {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if let Ok(meta) = fs::metadata(path) {
-            let mut perms = meta.permissions();
-            let mode = perms.mode();
-            if mode & 0o111 == 0 {
-                perms.set_mode(mode | 0o755);
-                let _ = fs::set_permissions(path, perms);
-            }
+    use std::os::unix::fs::PermissionsExt;
+    if let Ok(meta) = std::fs::metadata(path) {
+        let mut perm = meta.permissions();
+        if perm.mode() & 0o111 == 0 {
+            perm.set_mode(perm.mode() | 0o755);
+            let _ = std::fs::set_permissions(path, perm);
         }
     }
-    #[cfg(not(unix))]
-    {
-        let _ = path;
-    }
 }
 
-/// Startet den Prozess in einer eigenen Prozessgruppe.
-pub fn detach_group(cmd: &mut Command) {
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        cmd.process_group(0);
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = cmd;
-    }
-}
+#[cfg(not(unix))]
+pub fn ensure_executable(_path: &Path) {}
 
-/// Prüft über /proc, ob noch ein (nicht-Zombie-)Prozess der Gruppe läuft.
+/// Alle Prozesse einer Prozessgruppe (Linux, über /proc).
 #[cfg(target_os = "linux")]
-pub fn group_alive(pgid: u32) -> bool {
-    let Ok(entries) = fs::read_dir("/proc") else { return false };
-    for entry in entries.flatten() {
+pub fn group_members(pgid: u32) -> Vec<(u32, String)> {
+    let mut out = Vec::new();
+    let Ok(rd) = std::fs::read_dir("/proc") else { return out };
+    for entry in rd.flatten() {
         let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if !name.bytes().all(|b| b.is_ascii_digit()) {
-            continue;
-        }
-        let Ok(stat) = fs::read_to_string(entry.path().join("stat")) else { continue };
-        // Format: pid (comm) state ppid pgrp ...
-        let Some(close) = stat.rfind(')') else { continue };
+        let Some(pid) = name.to_str().and_then(|s| s.parse::<u32>().ok()) else { continue };
+        let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else { continue };
+        let (Some(open), Some(close)) = (stat.find('('), stat.rfind(')')) else { continue };
+        let comm = stat[open + 1..close].to_string();
         let rest: Vec<&str> = stat[close + 1..].split_whitespace().collect();
-        if rest.len() < 3 {
-            continue;
-        }
-        if rest[0] == "Z" || rest[0] == "X" {
-            continue;
-        }
-        if rest[2].parse::<u32>().ok() == Some(pgid) {
-            return true;
+        // rest[0] = Status, rest[1] = PPID, rest[2] = Prozessgruppe
+        if rest.len() > 2 && rest[0] != "Z" && rest[2].parse::<u32>().ok() == Some(pgid) {
+            out.push((pid, comm));
         }
     }
-    false
+    out
 }
 
-#[cfg(not(target_os = "linux"))]
-pub fn group_alive(_pgid: u32) -> bool {
-    false
-}
-
-pub fn wait_for_group(pgid: u32) {
-    while group_alive(pgid) {
-        std::thread::sleep(std::time::Duration::from_secs(2));
-    }
-}
-
-/// Beendet die ganze Prozessgruppe: erst freundlich, nach 8 s hart.
-pub fn terminate_group(pid: u32) {
+/// Beendet ein laufendes Spiel samt Unterprozessen.
+pub fn kill_tree(pid: u32) {
     #[cfg(unix)]
     {
-        let target = format!("-{pid}");
-        let _ = Command::new("kill").args(["-TERM", "--", &target]).status();
+        let group = format!("-{pid}");
+        let _ = Command::new("kill").args(["-TERM", "--", &group]).status();
         std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_secs(8));
-            if group_alive(pid) {
-                let _ = Command::new("kill").args(["-KILL", "--", &target]).status();
+            std::thread::sleep(std::time::Duration::from_secs(6));
+            #[cfg(target_os = "linux")]
+            let alive = !group_members(pid).is_empty();
+            #[cfg(not(target_os = "linux"))]
+            let alive = true;
+            if alive {
+                let _ = Command::new("kill").args(["-KILL", "--", &group]).status();
             }
         });
     }
@@ -176,180 +175,6 @@ pub fn terminate_group(pid: u32) {
             .args(["/PID", &pid.to_string(), "/T", "/F"])
             .status();
     }
-}
-
-#[derive(Serialize, Clone)]
-pub struct FileInfo {
-    pub path: String,
-    pub name: String,
-    pub kind: String,
-    pub size: u64,
-}
-
-pub fn kind_of(path: &Path) -> String {
-    let ext = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.to_lowercase())
-        .unwrap_or_default();
-    match ext.as_str() {
-        "exe" => "exe".into(),
-        "appimage" => "appimage".into(),
-        _ => "native".into(),
-    }
-}
-
-const GENERIC_DIRS: [&str; 14] = [
-    "bin", "bin64", "x64", "x86", "win64", "win32", "binaries", "system", "game", "release",
-    "build", "shipping", "linux", "windows",
-];
-const CONTAINER_DIRS: [&str; 10] = [
-    "downloads", "download", "desktop", "games", "spiele", "apps", "applications", "home",
-    "appimages", "programme",
-];
-
-fn tidy(raw: &str, kind: &str) -> String {
-    let drop = [
-        "x86_64", "x86-64", "amd64", "x64", "linux", "appimage", "win64", "win32", "shipping",
-        "setup", "portable",
-    ];
-    let mut words: Vec<String> = Vec::new();
-    for w in raw.split(|c: char| c == '_' || c == '-' || c == ' ' || c == '.') {
-        if w.is_empty() {
-            continue;
-        }
-        let low = w.to_lowercase();
-        if drop.contains(&low.as_str()) {
-            continue;
-        }
-        // Versionsnummern wie v1.2 oder 1.0.3 weglassen (nur bei AppImages üblich)
-        let versionish = low.starts_with('v') && low[1..].chars().all(|c| c.is_ascii_digit())
-            && low.len() > 1
-            || (kind == "appimage" && low.chars().all(|c| c.is_ascii_digit()));
-        if versionish {
-            continue;
-        }
-        let word = if w.chars().all(|c| !c.is_uppercase()) {
-            let mut cs = w.chars();
-            match cs.next() {
-                Some(f) => f.to_uppercase().collect::<String>() + cs.as_str(),
-                None => String::new(),
-            }
-        } else {
-            w.to_string()
-        };
-        words.push(word);
-    }
-    if words.is_empty() {
-        raw.to_string()
-    } else {
-        words.join(" ")
-    }
-}
-
-/// Schlägt einen Anzeigenamen vor: bei .exe meist der Spielordner, sonst der Dateiname.
-pub fn suggest_name(path: &Path, kind: &str) -> String {
-    let stem = path
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| "Unbenannt".into());
-    if kind == "exe" {
-        let user = proton::home()
-            .file_name()
-            .map(|n| n.to_string_lossy().to_lowercase())
-            .unwrap_or_default();
-        let mut dir = path.parent();
-        while let Some(d) = dir {
-            let Some(name) = d.file_name().map(|n| n.to_string_lossy().to_string()) else { break };
-            let low = name.to_lowercase();
-            if GENERIC_DIRS.contains(&low.as_str()) {
-                dir = d.parent();
-                continue;
-            }
-            if CONTAINER_DIRS.contains(&low.as_str()) || low == user || low.starts_with('.') {
-                break;
-            }
-            return tidy(&name, kind);
-        }
-    }
-    tidy(&stem, kind)
-}
-
-#[tauri::command]
-pub fn inspect_file(path: String) -> Result<FileInfo, String> {
-    let p = PathBuf::from(&path);
-    let meta = fs::metadata(&p).map_err(|e| format!("Datei nicht gefunden: {e}"))?;
-    let kind = kind_of(&p);
-    Ok(FileInfo {
-        name: suggest_name(&p, &kind),
-        kind,
-        size: meta.len(),
-        path,
-    })
-}
-
-fn skip_file(low: &str) -> bool {
-    const SKIP: [&str; 22] = [
-        "unins", "setup", "install", "redist", "vcredist", "dxsetup", "crashhandler",
-        "crashpad", "crashreport", "uploader", "updater", "helper", "dotnet", "directx",
-        "physx", "prereq", "easyanticheat", "be_service", "cefsharp", "dxwebsetup", "vc_redist",
-        "notification",
-    ];
-    SKIP.iter().any(|s| low.contains(s))
-}
-
-fn skip_dir(low: &str) -> bool {
-    const SKIP: [&str; 12] = [
-        "_commonredist", "redist", "__installer", "directx", "prefixes", "pfx", "compatdata",
-        "node_modules", "windows", "shadercache", "steamapps", "dotnet",
-    ];
-    low.starts_with('.') || SKIP.contains(&low)
-}
-
-fn scan(dir: &Path, depth: u32, out: &mut Vec<FileInfo>) {
-    if depth > 4 || out.len() >= 400 {
-        return;
-    }
-    let Ok(entries) = fs::read_dir(dir) else { return };
-    let mut subdirs = Vec::new();
-    for entry in entries.flatten() {
-        let p = entry.path();
-        let name = entry.file_name().to_string_lossy().to_lowercase();
-        let Ok(ft) = entry.file_type() else { continue };
-        if ft.is_dir() {
-            if !skip_dir(&name) {
-                subdirs.push(p);
-            }
-            continue;
-        }
-        let kind = kind_of(&p);
-        if kind == "native" || skip_file(&name) {
-            continue;
-        }
-        let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
-        out.push(FileInfo {
-            name: suggest_name(&p, &kind),
-            path: p.to_string_lossy().to_string(),
-            kind,
-            size,
-        });
-    }
-    for sub in subdirs {
-        scan(&sub, depth + 1, out);
-    }
-}
-
-/// Sucht in einem Ordner (bis 4 Ebenen tief) nach AppImages und .exe-Dateien.
-#[tauri::command]
-pub fn scan_folder(path: String) -> Result<Vec<FileInfo>, String> {
-    let dir = PathBuf::from(&path);
-    if !dir.is_dir() {
-        return Err("Ordner nicht gefunden.".into());
-    }
-    let mut out = Vec::new();
-    scan(&dir, 0, &mut out);
-    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    Ok(out)
 }
 
 fn spawn_opener(target: &str) -> Result<(), String> {
@@ -372,136 +197,188 @@ fn spawn_opener(target: &str) -> Result<(), String> {
         c
     };
     sanitize_env(&mut cmd);
-    let mut child = cmd.spawn().map_err(|e| format!("Konnte nicht geöffnet werden: {e}"))?;
-    std::thread::spawn(move || {
-        let _ = child.wait();
-    });
-    Ok(())
+    cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    cmd.spawn().map(|_| ()).map_err(|e| format!("Konnte nicht öffnen: {e}"))
 }
 
-/// Öffnet einen Ordner im Dateimanager (bei Dateien den enthaltenden Ordner).
+/// Öffnet eine Datei, einen Ordner oder einen Link mit dem Standardprogramm.
 #[tauri::command]
 pub fn open_path(path: String) -> Result<(), String> {
+    spawn_opener(&path)
+}
+
+/// Öffnet den Ordner, in dem eine Datei liegt.
+#[tauri::command]
+pub fn reveal_path(path: String) -> Result<(), String> {
     let p = PathBuf::from(&path);
-    let target = if p.is_file() {
-        p.parent().map(|d| d.to_path_buf()).unwrap_or(p)
-    } else {
+    let dir = if p.is_dir() {
         p
+    } else {
+        p.parent().map(|x| x.to_path_buf()).unwrap_or(p)
     };
-    if !target.exists() {
-        return Err("Ordner existiert (noch) nicht.".into());
-    }
-    spawn_opener(&target.to_string_lossy())
+    spawn_opener(&dir.to_string_lossy())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemInfo {
+    os: String,
+    home: String,
+    data_dir: String,
+    is_app_image: bool,
+    umu: Option<String>,
+    mangohud: bool,
+    gamemode: bool,
+    gamescope: bool,
+    winetricks: bool,
+    steam_root: Option<String>,
+    steam_runtime: bool,
+    desktop_entries: bool,
 }
 
 #[tauri::command]
-pub fn open_url(url: String) -> Result<(), String> {
-    if !url.starts_with("https://") {
-        return Err("Nur https-Links werden geöffnet.".into());
+pub fn system_info(app: AppHandle) -> SystemInfo {
+    let runtime = crate::proton::library_dirs().iter().any(|l| {
+        l.join("steamapps/common/SteamLinuxRuntime_sniper/_v2-entry-point").exists()
+    });
+    SystemInfo {
+        os: std::env::consts::OS.to_string(),
+        home: home().to_string_lossy().to_string(),
+        data_dir: crate::store::data_dir(&app)
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default(),
+        is_app_image: std::env::var_os("APPIMAGE").is_some(),
+        umu: which("umu-run").map(|p| p.to_string_lossy().to_string()),
+        mangohud: which("mangohud").is_some(),
+        gamemode: which("gamemoderun").is_some(),
+        gamescope: which("gamescope").is_some(),
+        winetricks: which("winetricks").is_some(),
+        steam_root: crate::proton::steam_root().map(|p| p.to_string_lossy().to_string()),
+        steam_runtime: runtime,
+        desktop_entries: cfg!(target_os = "linux"),
     }
-    spawn_opener(&url)
 }
 
-fn self_executable() -> String {
-    if let Ok(appimage) = std::env::var("APPIMAGE") {
-        if !appimage.is_empty() {
-            return appimage;
-        }
+/// Nur für die Update-Prüfung: holt JSON von der GitHub-API (über curl, ohne CORS-Probleme).
+#[tauri::command]
+pub fn http_get(url: String) -> Result<String, String> {
+    if !url.starts_with("https://api.github.com/repos/elkarbeenus/") {
+        return Err("Diese Adresse ist nicht erlaubt.".into());
     }
-    std::env::current_exe()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "lakuenlauncher".into())
+    let mut c = Command::new("curl");
+    c.args([
+        "-fsSL",
+        "--max-time",
+        "15",
+        "-H",
+        "Accept: application/vnd.github+json",
+        "-H",
+        "User-Agent: LakuenLauncher",
+        url.as_str(),
+    ]);
+    sanitize_env(&mut c);
+    let out = c.output().map_err(|e| format!("curl nicht verfügbar: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "Abruf fehlgeschlagen: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).to_string())
 }
 
-fn applications_dir() -> PathBuf {
-    proton::home().join(".local/share/applications")
+#[tauri::command]
+pub fn notify(app: AppHandle, title: String, body: String) -> Result<(), String> {
+    use tauri_plugin_notification::NotificationExt;
+    app.notification()
+        .builder()
+        .title(title)
+        .body(body)
+        .show()
+        .map_err(|e| e.to_string())
 }
 
+#[cfg(target_os = "linux")]
 fn desktop_dir() -> PathBuf {
-    let out = Command::new("xdg-user-dir").arg("DESKTOP").output();
-    if let Ok(o) = out {
-        let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+    let mut c = Command::new("xdg-user-dir");
+    c.arg("DESKTOP");
+    sanitize_env(&mut c);
+    if let Ok(out) = c.output() {
+        let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
         if !s.is_empty() && Path::new(&s).is_dir() {
             return PathBuf::from(s);
         }
     }
-    proton::home().join("Desktop")
+    let h = home();
+    for name in ["Desktop", "Schreibtisch"] {
+        if h.join(name).is_dir() {
+            return h.join(name);
+        }
+    }
+    h.join("Desktop")
 }
 
-fn shortcut_file_name(id: &str) -> String {
-    format!("lakuenlauncher-{}.desktop", safe_name(id))
+fn escape_desktop(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"").replace('`', "\\`").replace('$', "\\$")
 }
 
 /// Legt eine .desktop-Verknüpfung an, die das Spiel über den Launcher startet
-/// (so wird auch die Spielzeit gezählt). Lässt sich in Steam als Nicht-Steam-Spiel hinzufügen.
+/// (damit zählt auch dort die Spielzeit). Kann in Steam als Nicht-Steam-Spiel
+/// hinzugefügt werden.
 #[tauri::command]
-pub fn create_shortcut(
-    id: String,
+pub fn create_desktop_entry(
+    game_id: String,
     name: String,
     icon: Option<String>,
     on_desktop: bool,
 ) -> Result<String, String> {
     #[cfg(target_os = "linux")]
     {
-        let clean_name: String = name.chars().filter(|c| *c != '\n' && *c != '\r').collect();
-        let exec = self_executable().replace('"', "\\\"");
-        let mut content = format!(
-            "[Desktop Entry]\nType=Application\nName={clean_name}\nComment=Über LakuenLauncher starten\nExec=\"{exec}\" --launch {id}\nTerminal=false\nCategories=Game;\n",
-            id = safe_name(&id)
+        use std::os::unix::fs::PermissionsExt;
+        let id = crate::store::safe_id(&game_id);
+        let exe = std::env::var("APPIMAGE")
+            .map(PathBuf::from)
+            .or_else(|_| std::env::current_exe())
+            .map_err(|e| e.to_string())?;
+        let icon = icon.filter(|i| !i.is_empty()).unwrap_or_else(|| "applications-games".into());
+        let clean_name = name.replace(['\n', '\r'], " ");
+        let content = format!(
+            "[Desktop Entry]\nType=Application\nVersion=1.0\nName={clean_name}\nComment=Gestartet über LakuenLauncher\nExec=\"{}\" --launch {id}\nIcon={icon}\nTerminal=false\nCategories=Game;\nStartupNotify=true\n",
+            escape_desktop(&exe.to_string_lossy())
         );
-        if let Some(icon) = icon.filter(|i| !i.trim().is_empty()) {
-            content.push_str(&format!("Icon={icon}\n"));
-        }
-        let file = shortcut_file_name(&id);
-        let mut targets = vec![applications_dir()];
+        let apps = home().join(".local/share/applications");
+        std::fs::create_dir_all(&apps).map_err(|e| e.to_string())?;
+        let file = apps.join(format!("lakuenlauncher-{id}.desktop"));
+        std::fs::write(&file, &content).map_err(|e| e.to_string())?;
+        let _ = std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o755));
         if on_desktop {
-            targets.push(desktop_dir());
+            let d = desktop_dir();
+            let _ = std::fs::create_dir_all(&d);
+            let df = d.join(format!("lakuenlauncher-{id}.desktop"));
+            std::fs::write(&df, &content).map_err(|e| e.to_string())?;
+            let _ = std::fs::set_permissions(&df, std::fs::Permissions::from_mode(0o755));
         }
-        let mut written = String::new();
-        for dir in targets {
-            fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-            let path = dir.join(&file);
-            fs::write(&path, &content).map_err(|e| format!("Verknüpfung nicht anlegbar: {e}"))?;
-            ensure_executable(&path);
-            written = path.to_string_lossy().to_string();
-        }
-        Ok(written)
+        Ok(file.to_string_lossy().to_string())
     }
     #[cfg(not(target_os = "linux"))]
     {
-        let _ = (id, name, icon, on_desktop);
-        Err("Verknüpfungen sind unter diesem System noch nicht verfügbar.".into())
+        let _ = (game_id, name, icon, on_desktop);
+        Err("Verknüpfungen werden auf diesem System noch nicht unterstützt.".into())
     }
 }
 
 #[tauri::command]
-pub fn remove_shortcut(id: String) -> Result<(), String> {
-    let file = shortcut_file_name(&id);
-    for dir in [applications_dir(), desktop_dir()] {
-        let p = dir.join(&file);
-        if p.is_file() {
-            let _ = fs::remove_file(p);
-        }
+pub fn remove_desktop_entry(game_id: String) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        let id = crate::store::safe_id(&game_id);
+        let name = format!("lakuenlauncher-{id}.desktop");
+        let _ = std::fs::remove_file(home().join(".local/share/applications").join(&name));
+        let _ = std::fs::remove_file(desktop_dir().join(&name));
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = game_id;
     }
     Ok(())
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SystemInfo {
-    pub os: String,
-    pub version: String,
-    pub appimage: bool,
-    pub steam_os: bool,
-}
-
-#[tauri::command]
-pub fn system_info() -> SystemInfo {
-    let os_release = fs::read_to_string("/etc/os-release").unwrap_or_default();
-    SystemInfo {
-        os: std::env::consts::OS.into(),
-        version: env!("CARGO_PKG_VERSION").into(),
-        appimage: std::env::var_os("APPIMAGE").is_some(),
-        steam_os: os_release.contains("ID=steamos"),
-    }
 }

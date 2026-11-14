@@ -1,44 +1,47 @@
-//! Erkennung von Proton-Versionen (offiziell, Experimental, GE-Proton, eigene)
-//! sowie von Hilfswerkzeugen wie umu-launcher, MangoHud und GameMode.
+//! Erkennung von Proton-Versionen (Steam, GE-Proton & Co.) und der Steam Linux Runtime.
 
+use crate::platform::home;
+use serde::Serialize;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
-
 #[derive(Serialize, Clone, Debug)]
-pub struct ProtonVersion {
+#[serde(rename_all = "camelCase")]
+pub struct ProtonInfo {
     pub name: String,
     pub path: String,
-    /// "experimental" | "official" | "ge" | "custom"
-    pub kind: String,
+    pub source: String,
+    pub experimental: bool,
+    pub version: Vec<u64>,
+    pub runtime: Option<String>,
 }
 
-pub fn home() -> PathBuf {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/"))
+fn push_unique(list: &mut Vec<PathBuf>, seen: &mut HashSet<PathBuf>, p: PathBuf) {
+    if !p.is_dir() {
+        return;
+    }
+    let key = fs::canonicalize(&p).unwrap_or_else(|_| p.clone());
+    if seen.insert(key) {
+        list.push(p);
+    }
 }
 
-/// Mögliche Steam-Installationsorte (nativ und Flatpak).
+/// Mögliche Steam-Installationsordner (nativ und Flatpak).
 pub fn steam_roots() -> Vec<PathBuf> {
     let h = home();
     let candidates = [
+        h.join(".local/share/Steam"),
         h.join(".steam/steam"),
         h.join(".steam/root"),
-        h.join(".local/share/Steam"),
+        h.join(".steam/debian-installation"),
         h.join(".var/app/com.valvesoftware.Steam/data/Steam"),
         h.join(".var/app/com.valvesoftware.Steam/.local/share/Steam"),
     ];
-    let mut out: Vec<PathBuf> = Vec::new();
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
     for c in candidates {
-        if c.is_dir() {
-            let real = c.canonicalize().unwrap_or(c);
-            if !out.contains(&real) {
-                out.push(real);
-            }
-        }
+        push_unique(&mut out, &mut seen, c);
     }
     out
 }
@@ -47,159 +50,149 @@ pub fn steam_root() -> Option<PathBuf> {
     steam_roots().into_iter().next()
 }
 
-/// Liest zusätzliche Steam-Bibliotheken (z. B. SD-Karte) aus libraryfolders.vdf.
-fn library_dirs(root: &Path) -> Vec<PathBuf> {
-    let mut libs = vec![root.to_path_buf()];
-    let vdf = root.join("steamapps/libraryfolders.vdf");
-    if let Ok(text) = fs::read_to_string(vdf) {
-        for line in text.lines() {
-            let t = line.trim();
-            if !t.starts_with("\"path\"") {
-                continue;
-            }
-            let parts: Vec<&str> = t.split('"').collect();
-            if parts.len() >= 4 {
-                let p = PathBuf::from(parts[3].replace("\\\\", "\\"));
-                if p.is_dir() && !libs.contains(&p) {
-                    libs.push(p);
+/// Alle Steam-Bibliotheksordner (inkl. SD-Karte / weitere Laufwerke).
+pub fn library_dirs() -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
+    for root in steam_roots() {
+        push_unique(&mut out, &mut seen, root.clone());
+        for vdf in [
+            root.join("steamapps/libraryfolders.vdf"),
+            root.join("config/libraryfolders.vdf"),
+        ] {
+            let Ok(txt) = fs::read_to_string(&vdf) else { continue };
+            for line in txt.lines() {
+                let t = line.trim();
+                if t.starts_with("\"path\"") {
+                    let parts: Vec<&str> = t.split('"').collect();
+                    if parts.len() >= 4 {
+                        let p = parts[3].replace("\\\\", "\\");
+                        push_unique(&mut out, &mut seen, PathBuf::from(p));
+                    }
                 }
             }
         }
     }
-    libs
+    out
 }
 
-fn classify(name: &str) -> String {
-    let n = name.to_lowercase();
-    if n.contains("experimental") {
-        "experimental".into()
-    } else if n.contains("ge-proton") || n.contains("proton-ge") || n.contains("proton-cachyos") {
-        "ge".into()
-    } else if n.starts_with("proton") {
-        "official".into()
+fn version_of(name: &str) -> Vec<u64> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    for c in name.chars() {
+        if c.is_ascii_digit() {
+            cur.push(c);
+        } else if !cur.is_empty() {
+            out.push(cur.parse().unwrap_or(0));
+            cur.clear();
+        }
+    }
+    if !cur.is_empty() {
+        out.push(cur.parse().unwrap_or(0));
+    }
+    out
+}
+
+fn display_name(dir: &Path) -> String {
+    // compatibilitytool.vdf enthält oft einen schöneren Namen
+    if let Ok(txt) = fs::read_to_string(dir.join("compatibilitytool.vdf")) {
+        for line in txt.lines() {
+            let t = line.trim();
+            if t.starts_with("\"display_name\"") {
+                let parts: Vec<&str> = t.split('"').collect();
+                if parts.len() >= 4 && !parts[3].is_empty() {
+                    return parts[3].to_string();
+                }
+            }
+        }
+    }
+    dir.file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Proton".into())
+}
+
+/// Ordner der Steam Linux Runtime, die eine Proton-Version laut toolmanifest braucht.
+pub fn runtime_for(proton_dir: &Path) -> Option<PathBuf> {
+    let manifest = fs::read_to_string(proton_dir.join("toolmanifest.vdf")).ok()?;
+    let dir_name = if manifest.contains("1628350") {
+        "SteamLinuxRuntime_sniper"
+    } else if manifest.contains("1391110") {
+        "SteamLinuxRuntime_soldier"
     } else {
-        "custom".into()
-    }
-}
-
-fn numbers(name: &str) -> Vec<u32> {
-    name.split(|c: char| !c.is_ascii_digit())
-        .filter(|s| !s.is_empty())
-        .filter_map(|s| s.parse::<u32>().ok())
-        .collect()
-}
-
-fn rank(v: &ProtonVersion) -> (u8, Vec<u32>) {
-    let prio = match v.kind.as_str() {
-        "experimental" => 4,
-        "official" => 3,
-        "ge" => 2,
-        _ => 1,
+        return None;
     };
-    (prio, numbers(&v.name))
+    library_dirs()
+        .into_iter()
+        .map(|l| l.join("steamapps/common").join(dir_name))
+        .find(|p| p.join("_v2-entry-point").exists())
 }
 
-/// Durchsucht alle bekannten Orte nach Ordnern mit einem `proton`-Skript.
-pub fn detect() -> Vec<ProtonVersion> {
-    let mut dirs: Vec<PathBuf> = Vec::new();
-    for root in steam_roots() {
-        for lib in library_dirs(&root) {
-            dirs.push(lib.join("steamapps/common"));
+pub fn detect() -> Vec<ProtonInfo> {
+    let mut found: Vec<(PathBuf, String)> = Vec::new();
+    let mut seen = HashSet::new();
+    let mut add = |dir: PathBuf, source: &str, found: &mut Vec<(PathBuf, String)>| {
+        if dir.join("proton").is_file() {
+            let key = fs::canonicalize(&dir).unwrap_or_else(|_| dir.clone());
+            if seen.insert(key) {
+                found.push((dir, source.to_string()));
+            }
         }
-        dirs.push(root.join("compatibilitytools.d"));
+    };
+    for lib in library_dirs() {
+        if let Ok(rd) = fs::read_dir(lib.join("steamapps/common")) {
+            for e in rd.flatten() {
+                add(e.path(), "Steam", &mut found);
+            }
+        }
     }
-    dirs.push(PathBuf::from("/usr/share/steam/compatibilitytools.d"));
-    dirs.push(PathBuf::from("/usr/local/share/steam/compatibilitytools.d"));
-
-    let mut found: Vec<ProtonVersion> = Vec::new();
-    let mut seen: HashSet<PathBuf> = HashSet::new();
-    for dir in dirs {
-        let Ok(entries) = fs::read_dir(&dir) else { continue };
-        for entry in entries.flatten() {
-            let p = entry.path();
-            if !p.join("proton").is_file() {
-                continue;
+    let mut compat_dirs: Vec<PathBuf> = steam_roots()
+        .into_iter()
+        .map(|r| r.join("compatibilitytools.d"))
+        .collect();
+    compat_dirs.push(PathBuf::from("/usr/share/steam/compatibilitytools.d"));
+    compat_dirs.push(PathBuf::from("/usr/local/share/steam/compatibilitytools.d"));
+    for cd in compat_dirs {
+        if let Ok(rd) = fs::read_dir(&cd) {
+            for e in rd.flatten() {
+                add(e.path(), "Eigene", &mut found);
             }
-            let real = p.canonicalize().unwrap_or_else(|_| p.clone());
-            if !seen.insert(real) {
-                continue;
-            }
-            let name = p
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| "Proton".into());
-            let kind = classify(&name);
-            found.push(ProtonVersion {
+        }
+    }
+    let mut list: Vec<ProtonInfo> = found
+        .into_iter()
+        .map(|(dir, source)| {
+            let name = display_name(&dir);
+            let lower = name.to_lowercase();
+            ProtonInfo {
+                experimental: lower.contains("experimental"),
+                version: version_of(&name),
+                runtime: runtime_for(&dir).map(|p| p.to_string_lossy().to_string()),
+                path: dir.to_string_lossy().to_string(),
                 name,
-                path: p.to_string_lossy().to_string(),
-                kind,
-            });
-        }
-    }
-    found.sort_by(|a, b| rank(b).cmp(&rank(a)));
-    found
+                source,
+            }
+        })
+        .collect();
+    list.sort_by(|a, b| {
+        b.experimental
+            .cmp(&a.experimental)
+            .then_with(|| b.version.cmp(&a.version))
+            .then_with(|| a.name.cmp(&b.name))
+    });
+    list
 }
 
-/// Wählt eine Version anhand der Einstellung:
-/// "auto-experimental", "auto-latest" oder ein konkreter Name.
-pub fn resolve(choice: &str, versions: &[ProtonVersion]) -> Option<ProtonVersion> {
-    let by_kind = |k: &str| versions.iter().find(|v| v.kind == k).cloned();
-    match choice {
-        "auto-experimental" => by_kind("experimental")
-            .or_else(|| by_kind("official"))
-            .or_else(|| versions.first().cloned()),
-        "auto-latest" | "" => by_kind("official")
-            .or_else(|| by_kind("ge"))
-            .or_else(|| by_kind("experimental"))
-            .or_else(|| versions.first().cloned()),
-        name => versions
-            .iter()
-            .find(|v| v.name == name)
-            .cloned()
-            .or_else(|| resolve("auto-latest", versions)),
-    }
-}
-
-/// Sucht ein Programm im PATH (plus typische Orte auf SteamOS).
-pub fn which(program: &str) -> Option<PathBuf> {
-    let mut paths: Vec<PathBuf> = std::env::var_os("PATH")
-        .map(|p| std::env::split_paths(&p).collect())
-        .unwrap_or_default();
-    let h = home();
-    paths.push(h.join(".local/bin"));
-    paths.push(h.join("bin"));
-    paths.push(PathBuf::from("/usr/bin"));
-    paths.push(PathBuf::from("/usr/local/bin"));
-    for dir in paths {
-        let cand = dir.join(program);
-        if cand.is_file() {
-            return Some(cand);
-        }
-    }
-    None
+/// Neueste stabile Version, sonst Experimental.
+pub fn newest() -> Option<ProtonInfo> {
+    let list = detect();
+    list.iter()
+        .filter(|p| !p.experimental)
+        .max_by(|a, b| a.version.cmp(&b.version))
+        .cloned()
+        .or_else(|| list.first().cloned())
 }
 
 #[tauri::command]
-pub fn list_proton() -> Vec<ProtonVersion> {
+pub fn list_proton() -> Vec<ProtonInfo> {
     detect()
-}
-
-#[derive(Serialize)]
-pub struct Tools {
-    pub umu: bool,
-    pub mangohud: bool,
-    pub gamemode: bool,
-    pub winetricks: bool,
-    pub steam_root: Option<String>,
-}
-
-#[tauri::command]
-pub fn detect_tools() -> Tools {
-    Tools {
-        umu: which("umu-run").is_some(),
-        mangohud: which("mangohud").is_some(),
-        gamemode: which("gamemoderun").is_some(),
-        winetricks: which("winetricks").is_some(),
-        steam_root: steam_root().map(|p| p.to_string_lossy().to_string()),
-    }
 }

@@ -1,0 +1,16 @@
+{
+  "name": "Mondsee",
+  "author": "LakuenLauncher",
+  "mode": "dark",
+  "colors": {
+    "bg": "#0a0f14",
+    "bg2": "#0f161d",
+    "panel": "#142029",
+    "text": "#e8f3f7",
+    "dim": "#8fa9b5",
+    "accent": "#5ee0d0",
+    "accent2": "#5b8cff"
+  },
+  "onAccent": "#06221f",
+  "css": ".card .cover { border-radius: 10px; }"
+}
