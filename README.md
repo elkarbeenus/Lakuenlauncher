@@ -107,7 +107,7 @@ npm run build    # AppImage + .deb unter src-tauri/target/release/bundle/
 npm run preview  # Nur Oberfläche im Browser (Demo-Modus mit Beispieldaten)
 ```
 
-Releases baut GitHub Actions automatisch, sobald ein Tag `v*` gepusht wird.
+Releases baut GitHub Actions automatisch: Version in `src-tauri/tauri.conf.json` (und `package.json`, `Cargo.toml`) erhöhen, `CHANGELOG.md` ergänzen und auf `main` pushen – Tag und Release mit AppImage entstehen dann von selbst.
 
 ### Aufbau
 

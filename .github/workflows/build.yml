@@ -1,8 +1,10 @@
 name: Build & Release
 
-# - Push auf main: AppImage bauen (als Artefakt zum Testen)
-# - Tag v* (z. B. v0.1.0): bauen + GitHub-Release mit Patchnotes aus CHANGELOG.md
-# - Manuell über den Actions-Tab
+# - Push auf main: AppImage + .deb bauen.
+#   Gibt es für die Version aus src-tauri/tauri.conf.json noch kein Release,
+#   wird automatisch Tag v<Version> + GitHub-Release (Patchnotes aus CHANGELOG.md) erstellt.
+#   -> Neue Version veröffentlichen = Version erhöhen, CHANGELOG ergänzen, pushen.
+# - Tag v* oder manuell über den Actions-Tab: ebenfalls bauen (+ Release bei Tag).
 on:
   push:
     branches: [main]
@@ -75,19 +77,36 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
-      - name: Patchnotes aus CHANGELOG.md
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Version und Release-Bedarf prüfen
+        id: ver
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          TAG="v${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_REF}" == "refs/heads/main" ]] && ! git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Patchnotes aus CHANGELOG.md
+        if: steps.ver.outputs.release == 'true'
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
           awk -v v="[$VERSION]" '/^## /{p = index($0, v) > 0; if (p) next} p' CHANGELOG.md > release-notes.md
-          [ -s release-notes.md ] || echo "LakuenLauncher ${GITHUB_REF_NAME}" > release-notes.md
+          [ -s release-notes.md ] || echo "LakuenLauncher v${VERSION}" > release-notes.md
           cat release-notes.md
 
       - name: GitHub-Release erstellen
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.ver.outputs.release == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          name: LakuenLauncher ${{ github.ref_name }}
+          tag_name: ${{ steps.ver.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: LakuenLauncher ${{ steps.ver.outputs.tag }}
           body_path: release-notes.md
           make_latest: true
           files: |
