@@ -1,0 +1,55 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "LakuenLauncher",
+  "version": "0.1.0",
+  "identifier": "de.lesina.lakuenlauncher",
+  "build": {
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "LakuenLauncher",
+        "width": 1360,
+        "height": 860,
+        "minWidth": 960,
+        "minHeight": 600,
+        "center": true,
+        "dragDropEnabled": true
+      }
+    ],
+    "security": {
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": {
+          "allow": ["$APPDATA/**", "$HOME/**"],
+          "requireLiteralLeadingDot": false
+        }
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["appimage"],
+    "category": "Game",
+    "publisher": "Dominic Lesina",
+    "copyright": "© 2026 Dominic Lesina",
+    "shortDescription": "Lokaler Spiele- und App-Launcher für SteamOS und Linux",
+    "longDescription": "LakuenLauncher bündelt AppImages und Windows-Spiele (.exe via Proton) an einem Ort – mit eigenem Artwork, Spielzeit-Statistik und ohne Konto oder Datensammlung.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png",
+      "icons/icon.ico"
+    ],
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": false
+      }
+    }
+  }
+}
