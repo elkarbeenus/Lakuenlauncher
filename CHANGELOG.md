@@ -2,6 +2,25 @@
 
 Alle Änderungen an LakuenLauncher. Versionierung: 0.1.0, 0.1.1, … bis zur Version 1.
 
+## [0.1.1] – 2026-11-14
+
+### Flüssiger & sparsamer
+- Oberfläche spürbar flüssiger: keine teuren Glas-/Weichzeichner-Effekte mehr (backdrop-filter), Hintergrund-Licht ohne Dauer-Animation
+- Weichgezeichnete Banner und Stimmungslicht werden einmal vorberechnet statt bei jedem Bild neu gefiltert
+- Karten-Hover nur noch über Transform/Deckkraft (GPU-freundlich), kleinere Schatten
+- Kein Neuabspielen der Einblend-Animationen beim Aktualisieren – nur noch beim Navigieren
+- Große Bibliotheken: Karten außerhalb des Sichtbereichs werden nicht gezeichnet, Bilder werden asynchron dekodiert
+- Suche reagiert entprellt, ohne bei jedem Tastendruck alles neu aufzubauen
+
+### Ressourcenarm im Hintergrund
+- Minimiert oder ohne Fokus pausiert der Launcher alle Animationen
+- Live-Timer laufen nur, wenn wirklich ein Spiel läuft und das Fenster sichtbar ist
+- Controller-Abfrage nur noch, wenn ein Controller verbunden ist und das Fenster den Fokus hat (vorher Dauerschleife)
+
+### Neu in den Einstellungen (Allgemein → Leistung)
+- **Leichter Modus**: alle dekorativen Effekte aus – ideal fürs Steam Deck im Akkubetrieb
+- **Grafik-Modus „Schnell“**: volle GPU-Beschleunigung von WebKit (nach Neustart). Bleibt das Fenster schwarz, zurück auf „Kompatibel“
+
 ## [0.1.0] – 2026-11-14
 
 Erste Version von **LakuenLauncher** – erstellt von Dominic Lesina x Claude. 🌸

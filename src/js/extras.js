@@ -158,20 +158,30 @@ export function startTour(force = false) {
 export function isTourOpen() { return !!tourEl; }
 
 // ---------------- Controller ----------------
-let gpFrame = null;
+let gpTimer = null;
 const prevButtons = {};
 let lastMove = 0;
 
-export function initGamepad() {
-  window.addEventListener('gamepadconnected', () => { if (!gpFrame) loop(); });
-  if (navigator.getGamepads && [...navigator.getGamepads()].some(Boolean)) loop();
+function hasPads() { return !!navigator.getGamepads && [...navigator.getGamepads()].some(Boolean); }
+function syncGamepadPolling() {
+  const need = state.settings.gamepad && hasPads() && !document.hidden && document.hasFocus();
+  if (need && !gpTimer) gpTimer = setInterval(poll, 50);
+  if (!need && gpTimer) { clearInterval(gpTimer); gpTimer = null; }
 }
 
-function loop() {
-  gpFrame = requestAnimationFrame(loop);
-  if (!state.settings.gamepad || !navigator.getGamepads) return;
+export function initGamepad() {
+  if (!navigator.getGamepads) return;
+  window.addEventListener('gamepadconnected', syncGamepadPolling);
+  window.addEventListener('gamepaddisconnected', syncGamepadPolling);
+  window.addEventListener('focus', syncGamepadPolling);
+  window.addEventListener('blur', syncGamepadPolling);
+  document.addEventListener('visibilitychange', syncGamepadPolling);
+  syncGamepadPolling();
+}
+
+function poll() {
   const pads = [...navigator.getGamepads()].filter(Boolean);
-  if (!pads.length) return;
+  if (!pads.length) { syncGamepadPolling(); return; }
   const p = pads[0];
   const pressed = (i) => p.buttons[i]?.pressed;
   const edge = (i) => { const now = !!pressed(i); const was = prevButtons[i]; prevButtons[i] = now; return now && !was; };

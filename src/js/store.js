@@ -10,6 +10,7 @@ export const DEFAULT_SETTINGS = {
   showPlaytime: true,
   reduceMotion: false,
   effects: true,
+  lite: false,
   petals: false,
   ambient: true,
   sort: 'recent',

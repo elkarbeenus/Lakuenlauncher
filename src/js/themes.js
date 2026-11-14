@@ -44,7 +44,7 @@ export function applyTheme() {
   const vars = {
     '--bg': c.bg,
     '--bg-2': c.bg2 || c.bg,
-    '--panel': rgba(c.panel, light ? 0.78 : 0.72),
+    '--panel': rgba(c.panel, light ? 0.9 : 0.86),
     '--panel-solid': c.panel,
     '--panel-2': rgba(c.panel, 0.9),
     '--border': light ? 'rgba(30, 20, 50, 0.09)' : 'rgba(255, 255, 255, 0.08)',
@@ -62,6 +62,7 @@ export function applyTheme() {
   for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v);
   document.body.classList.toggle('reduce-motion', !!s.reduceMotion);
   document.body.classList.toggle('no-effects', !s.effects);
+  document.body.classList.toggle('lite', !!s.lite);
   if (!customStyle) { customStyle = document.createElement('style'); document.head.append(customStyle); }
   customStyle.textContent = theme.css || '';
   renderPetals();
@@ -70,10 +71,10 @@ export function applyTheme() {
 function renderPetals() {
   const box = document.getElementById('petals');
   if (!box) return;
-  const want = state.settings.petals && state.settings.effects && !state.settings.reduceMotion;
+  const want = state.settings.petals && state.settings.effects && !state.settings.reduceMotion && !state.settings.lite;
   if (!want) { box.innerHTML = ''; return; }
   if (box.childElementCount) return;
-  for (let i = 0; i < 18; i++) {
+  for (let i = 0; i < 12; i++) {
     const p = document.createElement('i');
     p.className = 'petal';
     p.style.left = Math.random() * 100 + 'vw';

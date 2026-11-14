@@ -1,7 +1,7 @@
 // LakuenLauncher – erstellt von Dominic Lesina x Claude
 import { invoke, appVersion, onDragDrop, isTauri, fileSrc, listen } from './api.js';
 import { state, loadAll, subscribe, gameById, lastPlayed, visibleGames } from './store.js';
-import { icon, esc, h, toast, closeTopModal, hasModal, closeContext, fmtClock } from './ui.js';
+import { icon, esc, h, toast, closeTopModal, hasModal, closeContext, fmtClock, blurred } from './ui.js';
 import { applyTheme } from './themes.js';
 import {
   wireActions, refreshProtons, initRunEvents, addFromPaths, pickAndAdd, scanDialog, scanWatchFolders,
@@ -77,6 +77,8 @@ function renderSidebar() {
 }
 
 function render(scrollTop = false) {
+  // Einblend-Animationen nur bei echter Navigation, nicht bei jedem Aktualisieren
+  contentEl.classList.toggle('static', !scrollTop);
   renderSidebar();
   topEl.style.display = '';
   const v = state.view.name;
@@ -96,9 +98,16 @@ function updateAmbient() {
     if (state.view.name === 'game') g = gameById(state.view.gameId);
     else g = [...state.library.games].filter((x) => lastPlayed(x) && (x.art?.hero || x.art?.cover)).sort((a, b) => lastPlayed(b) - lastPlayed(a))[0];
   }
-  const src = g ? (g.art?.hero || g.art?.cover) : null;
-  if (src) { el.style.backgroundImage = `url('${fileSrc(src)}')`; el.classList.add('on'); }
-  else el.classList.remove('on');
+  const src = g ? fileSrc(g.art?.hero || g.art?.cover) : null;
+  if (!src || state.settings.lite) { el.classList.remove('on'); el.dataset.src = ''; return; }
+  if (el.dataset.src === src) return; // nichts geändert -> nicht neu zeichnen
+  el.dataset.src = src;
+  blurred(src).then((url) => {
+    if (el.dataset.src !== src || !url) return;
+    if (url === 'CSS') { el.style.backgroundImage = `url('${src}')`; el.style.filter = 'blur(60px)'; }
+    else { el.style.backgroundImage = `url('${url}')`; el.style.filter = ''; }
+    el.classList.add('on');
+  });
 }
 
 // Bei Datenänderungen gezielt neu zeichnen (Suchfeld behält den Fokus)
@@ -114,13 +123,30 @@ subscribe((what) => {
   contentEl.scrollTop = st;
 });
 
-// Live-Timer für laufende Spiele
-setInterval(() => {
+// Live-Timer für laufende Spiele – läuft nur, wenn wirklich ein Spiel läuft und das Fenster sichtbar ist
+let liveTimer = null;
+function tickLive() {
   document.querySelectorAll('[data-live]').forEach((el) => {
     const r = state.running[el.dataset.live];
     if (r) el.textContent = fmtClock((Date.now() - r.started) / 1000);
   });
-}, 1000);
+}
+function updateLiveTimer() {
+  const need = Object.keys(state.running).length > 0 && !document.hidden;
+  if (need && !liveTimer) liveTimer = setInterval(tickLive, 1000);
+  if (!need && liveTimer) { clearInterval(liveTimer); liveTimer = null; }
+}
+subscribe(updateLiveTimer);
+
+// Ruhemodus: im Hintergrund / minimiert alle Animationen anhalten
+function setIdle(idle) {
+  document.body.classList.toggle('idle', idle);
+  updateLiveTimer();
+  if (!idle) tickLive();
+}
+document.addEventListener('visibilitychange', () => setIdle(document.hidden));
+window.addEventListener('blur', () => setIdle(true));
+window.addEventListener('focus', () => setIdle(false));
 
 // ---------- Tastatur ----------
 window.addEventListener('keydown', (e) => {

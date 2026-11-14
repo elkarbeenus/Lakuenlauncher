@@ -25,6 +25,33 @@ fn parse_launch_arg() -> Option<String> {
         .and_then(|i| args.get(i + 1).cloned())
 }
 
+/// Render-Modus (wird vor dem Start des Webviews gelesen, daher als eigene kleine Datei)
+fn render_mode_path() -> std::path::PathBuf {
+    std::env::var_os("XDG_DATA_HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| platform::home().join(".local/share"))
+        .join("de.lakuen.launcher")
+        .join("render-mode")
+}
+
+#[tauri::command]
+fn get_render_mode() -> String {
+    std::fs::read_to_string(render_mode_path())
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "kompatibel".into())
+}
+
+#[tauri::command]
+fn set_render_mode(mode: String) -> Result<(), String> {
+    let p = render_mode_path();
+    if let Some(dir) = p.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(p, mode).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn take_pending_launch(state: tauri::State<'_, AppState>) -> Option<String> {
     state.pending_launch.lock().ok().and_then(|mut p| p.take())
@@ -32,9 +59,10 @@ fn take_pending_launch(state: tauri::State<'_, AppState>) -> Option<String> {
 
 fn main() {
     // WebKitGTK zeigt auf manchen Grafiktreibern sonst ein leeres Fenster.
+    // Im Modus "schnell" bleibt der volle GPU-Pfad (DMABUF) aktiv.
     #[cfg(target_os = "linux")]
     {
-        if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        if get_render_mode() != "schnell" && std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
             std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
         }
     }
@@ -64,6 +92,8 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             take_pending_launch,
+            get_render_mode,
+            set_render_mode,
             store::store_load,
             store::store_save,
             store::read_text_file,

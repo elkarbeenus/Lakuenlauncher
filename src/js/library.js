@@ -1,7 +1,7 @@
 // Bibliothek (Raster/Liste, Weiterspielen-Banner) und Spiel-Detailseite.
 import { invoke, fileSrc } from './api.js';
 import { state, visibleGames, gameStats, lastPlayed, setSetting, secondsByDay, dayKey, gameById, updateGame } from './store.js';
-import { icon, esc, coverHTML, heroBg, genGradient, fmtDuration, fmtRelative, fmtDate, fmtHours, fmtClock, kindLabel, toast, h, confirmDialog } from './ui.js';
+import { icon, esc, coverHTML, heroBg, genGradient, applyBlur, fmtDuration, fmtRelative, fmtDate, fmtHours, fmtClock, kindLabel, toast, h, confirmDialog } from './ui.js';
 import { launch, stop, gameMenu, addMenu, pickAndAdd, scanDialog, toggleFavorite, createShortcut, deleteGame, protonLabel, runnerLabel, resolveProton } from './actions.js';
 import { openEditor } from './editor.js';
 import { barChart } from './stats.js';
@@ -29,7 +29,17 @@ export function renderLibraryTop(top) {
     <div class="seg"><button data-view="grid" class="${s.view === 'grid' ? 'on' : ''}" title="Raster">${icon('grid', 16)}</button><button data-view="list" class="${s.view === 'list' ? 'on' : ''}" title="Liste">${icon('list', 16)}</button></div>
     <button class="btn primary" id="lib-add" data-tour="add">${icon('plus', 17)} Hinzufügen</button>`;
   const inp = top.querySelector('#lib-search');
-  inp.addEventListener('input', () => { state.search = inp.value; renderLibraryContent(document.querySelector('.content')); top.querySelector('h1 small').textContent = visibleGames().length; });
+  let tmr;
+  inp.addEventListener('input', () => {
+    clearTimeout(tmr);
+    tmr = setTimeout(() => {
+      state.search = inp.value;
+      const c = document.querySelector('.content');
+      c.classList.add('static');
+      renderLibraryContent(c);
+      top.querySelector('h1 small').textContent = visibleGames().length;
+    }, 90);
+  });
   top.querySelector('#lib-sort').onchange = (e) => setSetting('sort', e.target.value);
   top.querySelectorAll('[data-view]').forEach((b) => b.onclick = () => setSetting('view', b.dataset.view));
   top.querySelector('#lib-add').onclick = (e) => { const r = e.currentTarget.getBoundingClientRect(); addMenu(r.right - 230, r.bottom + 6); };
@@ -43,7 +53,7 @@ function continueBanner() {
   const st = gameStats(g.id);
   const running = state.running[g.id];
   return `<div class="continue" data-continue="${g.id}">
-    <div class="bg" style="background-image:${bg ? `url('${esc(bg.url)}')` : genGradient(g.name)};${bg?.blur ? 'filter:blur(18px) saturate(1.3);transform:scale(1.15)' : ''}"></div>
+    <div class="bg" ${bg?.blur ? `data-blur-src="${esc(bg.url)}"` : ''} style="background-image:${bg && !bg.blur ? `url('${esc(bg.url)}')` : genGradient(g.name)}"></div>
     <div class="inner">
       <div class="eyebrow">${running ? '<span class="dot"></span> Läuft gerade' : `${icon('clock', 14)} Weiterspielen`}</div>
       ${g.art?.logo ? `<img class="logo-img" src="${esc(fileSrc(g.art.logo))}" alt="${esc(g.name)}">` : `<div class="title">${esc(g.name)}</div>`}
@@ -115,6 +125,7 @@ export function renderLibraryContent(host) {
       ? `<div class="list">${list.map(rowHTML).join('')}</div>`
       : `<div class="grid" data-tour="grid">${list.map(cardHTML).join('')}</div>`)
       : `<div class="empty" style="padding:50px"><h2>Nichts gefunden</h2><p>${state.search ? `Keine Treffer für „${esc(state.search)}“.` : 'Hier ist noch nichts.'}</p></div>`}`;
+  applyBlur(content);
   content.querySelectorAll('[data-f]').forEach((b) => b.onclick = () => nav({ name: 'library', filter: b.dataset.f }));
   content.querySelector('#scan-show')?.addEventListener('click', () => scanDialog(null, state.scanFound));
   bindGameEvents(content);
@@ -172,7 +183,7 @@ export function renderDetail(content) {
   const proton = isExe ? resolveProton(g.proton !== 'default' ? g.proton : state.settings.defaultProton) : null;
   content.innerHTML = `<div class="detail">
     <div class="hero">
-      <div class="bg ${bg?.blur ? 'blur' : ''}" style="background-image:${bg ? `url('${esc(bg.url)}')` : genGradient(g.name)}"></div>
+      <div class="bg ${bg?.blur ? 'blur' : ''}" ${bg?.blur ? `data-blur-src="${esc(bg.url)}"` : ''} style="background-image:${bg && !bg.blur ? `url('${esc(bg.url)}')` : genGradient(g.name)}"></div>
       <div class="back"><button class="btn small" id="d-back">${icon('left', 15)} Bibliothek</button></div>
       <div class="head">
         <div class="poster">${coverHTML(g)}</div>
@@ -228,6 +239,7 @@ export function renderDetail(content) {
       </div>
     </div></div>`;
 
+  applyBlur(content);
   const pane = content.querySelector('#d-pane');
   const panes = {
     overview: () => {

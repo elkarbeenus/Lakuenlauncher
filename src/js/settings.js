@@ -42,7 +42,7 @@ export function renderSettings(content) {
       const k = inp.dataset.set;
       const v = inp.type === 'checkbox' ? inp.checked : inp.type === 'range' || inp.type === 'number' ? +inp.value : inp.value;
       setSetting(k, v);
-      if (['reduceMotion', 'effects', 'petals', 'cardSize', 'ambient'].includes(k)) applyTheme();
+      if (['reduceMotion', 'effects', 'petals', 'cardSize', 'ambient', 'lite'].includes(k)) applyTheme();
     });
   });
 }
@@ -127,6 +127,11 @@ function general(body) {
     <div class="panel"><h3>${icon('sparkle', 17)} Einführung</h3>
       ${row('Tutorial erneut zeigen', 'Die kurze Tour durch den Launcher noch einmal ansehen', `<button class="btn" id="g-tour">${icon('play', 14)} Tour starten</button>`)}
     </div>
+    <div class="panel"><h3>${icon('zap', 17)} Leistung</h3>
+      ${row('Leichter Modus', 'Schaltet dekorative Effekte ab (Hintergrund-Licht, Glanz, Schatten, Animationen) – ideal fürs Steam Deck im Akkubetrieb', sw('lite', s.lite))}
+      ${row('Grafik-Modus', 'Schnell = volle GPU-Beschleunigung (flüssiger). Bleibt das Fenster danach schwarz, zurück auf Kompatibel stellen. Wirkt nach Neustart.', `<select class="input" id="g-render" style="width:auto"><option value="kompatibel">Kompatibel</option><option value="schnell">Schnell</option></select>`)}
+      <p class="hint" style="margin:8px 0 0">Im Hintergrund oder minimiert pausiert der Launcher automatisch alle Animationen und Timer.</p>
+    </div>
     <div class="panel"><h3>${icon('play', 17)} Beim Spielstart</h3>
       ${row('Launcher minimieren', 'Fenster beim Start eines Spiels minimieren', sw('minimizeOnLaunch', s.minimizeOnLaunch))}
       ${row('Danach wieder öffnen', 'Fenster wieder in den Vordergrund holen, wenn das Spiel beendet ist', sw('restoreOnExit', s.restoreOnExit))}
@@ -138,6 +143,12 @@ function general(body) {
     <div class="panel"><h3>${icon('shield', 17)} Privatsphäre</h3>
       <p style="margin:0;color:var(--text-dim)">LakuenLauncher braucht <b>kein Konto</b> und sammelt <b>keine Daten</b>. Bibliothek, Artwork und Spielzeiten liegen ausschließlich lokal auf deinem Gerät. Die einzige Verbindung ins Internet ist die optionale Update-Prüfung bei GitHub.</p>
     </div>`;
+  const rs = body.querySelector('#g-render');
+  invoke('get_render_mode').then((m) => { if (m) rs.value = m; }).catch(() => {});
+  rs.onchange = async () => {
+    try { await invoke('set_render_mode', { mode: rs.value }); toast('Grafik-Modus gespeichert', 'Starte den Launcher neu, damit er wirkt.', { type: 'ok', timeout: 6000 }); }
+    catch (e) { toast('Fehler', String(e), { type: 'err' }); }
+  };
   body.querySelector('#g-tour').onclick = () => { nav({ name: 'library', filter: 'all' }); setTimeout(() => startTour(true), 250); };
 }
 

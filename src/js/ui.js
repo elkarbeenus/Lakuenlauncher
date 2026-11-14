@@ -143,7 +143,7 @@ function hashHue(str) {
 export function coverHTML(game, { kind = 'cover' } = {}) {
   const art = game.art || {};
   const src = kind === 'icon' ? (art.icon || art.cover) : art.cover;
-  if (src) return `<img src="${esc(fileSrc(src))}" alt="" loading="lazy" draggable="false" />`;
+  if (src) return `<img src="${esc(fileSrc(src))}" alt="" loading="lazy" decoding="async" draggable="false" />`;
   const hue = hashHue(game.name);
   const bg = `linear-gradient(150deg, hsl(${hue} 70% 58%), hsl(${(hue + 50) % 360} 65% 38%) 60%, hsl(${(hue + 90) % 360} 60% 22%))`;
   const letter = esc((game.name || '?').trim().charAt(0).toUpperCase());
@@ -155,6 +155,44 @@ export function heroBg(game) {
   if (art.hero) return { url: fileSrc(art.hero), blur: false };
   if (art.cover) return { url: fileSrc(art.cover), blur: true };
   return null;
+}
+
+// Weichgezeichnete Hintergründe ohne teuren CSS-Filter: Bild auf ein winziges
+// Canvas verkleinern – beim Hochskalieren wirkt es von selbst unscharf. Ergebnis wird gecacht.
+const blurCache = new Map();
+export function blurred(src) {
+  if (!src) return Promise.resolve(null);
+  if (blurCache.has(src)) return blurCache.get(src);
+  const p = new Promise((resolve) => {
+    const img = new Image();
+    img.decoding = 'async';
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const w = 40, h = Math.max(1, Math.round((40 * img.naturalHeight) / Math.max(1, img.naturalWidth)));
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        const ctx = c.getContext('2d');
+        ctx.filter = 'saturate(1.35)';
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(c.toDataURL('image/png'));
+      } catch (_) { resolve('CSS'); } // Canvas gesperrt -> CSS-Filter als Rückfall
+    };
+    img.onerror = () => resolve('CSS');
+    img.src = src;
+  });
+  blurCache.set(src, p);
+  return p;
+}
+
+/** Elemente mit data-blur-src bekommen ihren weichgezeichneten Hintergrund. */
+export function applyBlur(root) {
+  root.querySelectorAll('[data-blur-src]').forEach(async (el) => {
+    const src = el.dataset.blurSrc;
+    const url = await blurred(src);
+    if (url === 'CSS') { el.style.backgroundImage = `url('${src}')`; el.style.filter = 'blur(24px)'; el.style.transform = 'scale(1.15)'; }
+    else if (url) el.style.backgroundImage = `url('${url}')`;
+  });
 }
 
 export function genGradient(name) {
