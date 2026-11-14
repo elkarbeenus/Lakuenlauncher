@@ -24,11 +24,12 @@
 |---|---|
 | 🎮 **Alles an einem Ort** | AppImages, Linux-Programme und Windows-Spiele (.exe) verwalten und starten |
 | 🍷 **Proton eingebaut** | .exe-Dateien starten mit der neuesten Proton-Version oder Proton Experimental – automatisch erkannt (Steam, GE-Proton, Flatpak) |
-| 🖼️ **Eigenes Artwork** | Cover, Banner, Logo und Icon pro Spiel – wie bei Nicht-Steam-Spielen in Steam. Bilder einfach ins Fenster ziehen |
+| 🖼️ **Eigenes Artwork** | Cover, Banner, Logo und Icon pro Spiel – Bild einfach auf die Spielkarte ziehen, zuschneiden, fertig. Oder einzigartiges Artwork generieren lassen |
+| ⚡ **Frame Generation** | lsfg-vk (Lossless Scaling) pro Spiel: Aus, x2, x3, x4 |
 | ⏱️ **Spielzeit & Statistik** | Zählt nur Starts über den Launcher. Verlauf, Aktivitätskalender, Top-Spiele, Serien |
 | 🔍 **Schnell** | Strg+K-Befehlspalette, Drag & Drop, Ordner-Scan, beobachtete Ordner, Tastenkürzel, Controller |
 | 🎨 **Themes** | 8 dunkle + 3 helle Themes, eigene Akzentfarbe, **externe Themes per JSON** |
-| 🔔 **Updates** | Prüft die GitHub-Releases und meldet neue Versionen per Benachrichtigung |
+| 🔔 **Updates** | Meldet neue Releases und aktualisiert sich mit einem Klick selbst (inkl. SHA-256-Prüfung) |
 | 🔒 **Privat** | Kein Konto, keine Telemetrie. Alles bleibt lokal auf deinem Gerät |
 
 Weitere Komfortfunktionen: Sammlungen, Favoriten, Ausblenden, „Weiterspielen“-Banner, eigener Wine-Prefix pro Spiel, winecfg/winetricks-Knöpfe, MangoHud/GameMode/FSR/gamescope pro Spiel, Umgebungsvariablen, Skripte vor/nach dem Start, Startprotokoll, Desktop-Verknüpfungen, Export/Import und tägliche Sicherungen, Tutorial beim ersten Start.
@@ -42,7 +43,7 @@ Weitere Komfortfunktionen: Sammlungen, Favoriten, Ausblenden, „Weiterspielen�
    ```
 3. Doppelklick zum Starten. Fertig.
 
-**Update:** Der Launcher meldet neue Versionen. Einfach die alte AppImage durch die neue ersetzen – Bibliothek, Artwork und Statistik bleiben erhalten.
+**Update:** Ab v0.1.2 aktualisiert sich der Launcher selbst – ein Klick auf „Update verfügbar“ genügt. Bibliothek, Artwork und Statistik bleiben erhalten.
 
 ### Für Windows-Spiele
 
@@ -131,7 +132,6 @@ src-tauri/src/    Rust-Backend
 
 - Windows-Version (.exe-Setup) – die Grundlagen sind im Code bereits vorbereitet
 - Optionale Cover-Suche (z. B. SteamGridDB mit eigenem API-Key)
-- Direktes Selbst-Update der AppImage
 - Vollbild-/Gaming-Modus für das Steam Deck
 - Mehrsprachigkeit
 

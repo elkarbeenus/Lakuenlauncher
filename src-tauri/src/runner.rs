@@ -37,6 +37,9 @@ pub struct LaunchRequest {
     pub mangohud: bool,
     pub gamemode: bool,
     pub fsr: bool,
+    /// Frame Generation über lsfg-vk: 0 = aus, 2 = x2, 3 = x3, 4 = x4
+    pub framegen: u32,
+    pub framegen_perf: bool,
     pub wrapper: Option<String>,
     pub pre_script: Option<String>,
     pub post_script: Option<String>,
@@ -236,6 +239,20 @@ fn build_plan(app: &AppHandle, req: &LaunchRequest, is_tool: bool) -> Result<Pla
 
     if req.fsr {
         env.push(("WINE_FULLSCREEN_FSR".into(), "1".into()));
+    }
+    if req.framegen >= 2 {
+        // lsfg-vk (Lossless Scaling Frame Generation für Linux) per Umgebungsvariablen
+        let mult = req.framegen.min(4).to_string();
+        env.push(("LSFG_LEGACY".into(), "1".into()));
+        env.push(("ENABLE_LSFG".into(), "1".into()));
+        env.push(("LSFG_MULTIPLIER".into(), mult));
+        if req.framegen_perf {
+            env.push(("LSFG_PERF_MODE".into(), "1".into()));
+        }
+        notes.push(format!(
+            "Frame Generation x{} über lsfg-vk aktiv (benötigt lsfg-vk und Lossless Scaling aus Steam).",
+            req.framegen.min(4)
+        ));
     }
 
     let mut wrap: Vec<String> = Vec::new();
@@ -460,6 +477,7 @@ pub fn run_prefix_tool(app: AppHandle, req: LaunchRequest, tool: String) -> Resu
     base.mangohud = false;
     base.gamemode = false;
     base.fsr = false;
+    base.framegen = 0;
     base.wrapper = None;
     base.args = String::new();
     base.kind = "exe".into();

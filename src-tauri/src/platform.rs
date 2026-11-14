@@ -234,6 +234,32 @@ pub struct SystemInfo {
     steam_root: Option<String>,
     steam_runtime: bool,
     desktop_entries: bool,
+    lsfg: bool,
+    lossless_scaling: bool,
+}
+
+/// Ist lsfg-vk (Frame Generation, Vulkan-Layer) installiert?
+fn lsfg_installed() -> bool {
+    let h = home();
+    let dirs = [
+        h.join(".local/share/vulkan/implicit_layer.d"),
+        h.join(".local/share/vulkan/explicit_layer.d"),
+        PathBuf::from("/usr/share/vulkan/implicit_layer.d"),
+        PathBuf::from("/usr/local/share/vulkan/implicit_layer.d"),
+        PathBuf::from("/etc/vulkan/implicit_layer.d"),
+        h.join(".var/app/com.valvesoftware.Steam/data/vulkan/implicit_layer.d"),
+    ];
+    dirs.iter().any(|d| {
+        std::fs::read_dir(d)
+            .map(|rd| {
+                rd.flatten()
+                    .any(|e| {
+                        let n = e.file_name().to_string_lossy().to_ascii_lowercase();
+                        n.contains("lsfg") || n.contains("frame_generation")
+                    })
+            })
+            .unwrap_or(false)
+    }) || h.join("lsfg").is_file()
 }
 
 #[tauri::command]
@@ -256,6 +282,10 @@ pub fn system_info(app: AppHandle) -> SystemInfo {
         steam_root: crate::proton::steam_root().map(|p| p.to_string_lossy().to_string()),
         steam_runtime: runtime,
         desktop_entries: cfg!(target_os = "linux"),
+        lsfg: lsfg_installed(),
+        lossless_scaling: crate::proton::library_dirs()
+            .iter()
+            .any(|l| l.join("steamapps/common/Lossless Scaling/Lossless.dll").exists()),
     }
 }
 

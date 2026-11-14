@@ -48,7 +48,7 @@ export async function checkUpdates({ manual = false } = {}) {
     }
     const version = latest.tag_name.replace(/^v/i, '');
     const asset = (latest.assets || []).find((a) => /\.AppImage$/i.test(a.name));
-    const info = { version, name: latest.name || latest.tag_name, url: latest.html_url, body: latest.body || '', published: latest.published_at, download: asset?.browser_download_url || latest.html_url, size: asset?.size || 0 };
+    const info = { version, name: latest.name || latest.tag_name, url: latest.html_url, body: latest.body || '', published: latest.published_at, download: asset?.browser_download_url || latest.html_url, size: asset?.size || 0, sha256: (asset?.digest || '').replace(/^sha256:/i, '') || null, hasAsset: !!asset };
     if (isNewer(version, state.version)) {
       state.update = info;
       notify('update');
@@ -57,7 +57,8 @@ export async function checkUpdates({ manual = false } = {}) {
         toast(`Update verfügbar: v${version}`, 'Eine neue Version von LakuenLauncher ist da.', {
           timeout: 12000,
           actions: [
-            { label: 'Ansehen', primary: true, onClick: () => window.dispatchEvent(new CustomEvent('lakuen:nav', { detail: { name: 'settings', settingsSection: 'updates' } })) },
+            { label: 'Jetzt aktualisieren', primary: true, onClick: () => { goUpdates(); installUpdate(); } },
+            { label: 'Details', onClick: goUpdates },
             { label: 'Später', onClick: () => setSetting('skippedVersion', version) },
           ],
         });
@@ -81,4 +82,63 @@ export function autoCheck() {
   setTimeout(() => checkUpdates(), 2500);
   // während der Launcher läuft, alle 6 Stunden erneut prüfen
   setInterval(() => { if (state.settings.updateCheck) checkUpdates(); }, 6 * 3600 * 1000);
+}
+
+function goUpdates() {
+  window.dispatchEvent(new CustomEvent('lakuen:nav', { detail: { name: 'settings', settingsSection: 'updates' } }));
+}
+
+// ---------- 1-Klick-Update: laden, prüfen (SHA-256), ersetzen, neu starten ----------
+let listening = false;
+async function ensureListeners() {
+  if (listening) return;
+  listening = true;
+  const { listen } = await import('./api.js');
+  await listen('update-progress', (p) => { state.updateProgress = { ...p, running: true }; notify('update-progress'); });
+  await listen('update-done', () => {
+    state.updateProgress = { running: false, ready: true };
+    notify('update-progress');
+    toast('Update installiert', `v${state.update?.version} ist bereit. Jetzt neu starten?`, {
+      type: 'ok', timeout: 0, actions: [{ label: 'Neu starten', primary: true, onClick: restartNow }, { label: 'Später' }],
+    });
+  });
+  await listen('update-error', (p) => {
+    state.updateProgress = { running: false, error: p.error };
+    notify('update-progress');
+    toast('Update fehlgeschlagen', p.error, { type: 'err', timeout: 10000 });
+  });
+}
+
+export async function installUpdate() {
+  const u = state.update;
+  if (!u) return;
+  if (state.updateProgress?.running) return;
+  let can = false;
+  try { can = await invoke('can_self_update'); } catch (_) {}
+  if (!can || !u.hasAsset) {
+    toast('Bitte manuell aktualisieren', 'Automatisch geht das nur, wenn der Launcher als AppImage läuft. Die Release-Seite wird geöffnet.');
+    invoke('open_path', { path: u.url }).catch(() => {});
+    return;
+  }
+  await ensureListeners();
+  state.updateProgress = { running: true, done: 0, total: u.size };
+  notify('update-progress');
+  try {
+    await invoke('self_update', { url: u.download, sha256: u.sha256, size: u.size || null });
+  } catch (e) {
+    state.updateProgress = { running: false, error: String(e) };
+    notify('update-progress');
+    toast('Update fehlgeschlagen', String(e), { type: 'err' });
+  }
+}
+
+export function restartNow() {
+  invoke('restart_app').catch((e) => toast('Neustart nicht möglich', `${e} – bitte den Launcher selbst neu öffnen.`, { type: 'err' }));
+}
+
+/** Lesbare Versionsanzeige */
+export function prettyVersion(v) {
+  const m = String(v || '').replace(/^v/i, '').match(/^(\d+\.\d+\.\d+)(?:-(\d+)-g([0-9a-f]+))?/);
+  if (!m) return 'v' + v;
+  return m[2] ? `v${m[1]} test ${m[2]} (${m[3]})` : `v${m[1]}`;
 }

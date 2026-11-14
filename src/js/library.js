@@ -13,6 +13,7 @@ const FILTER_TITLES = { all: 'Bibliothek', favorites: 'Favoriten', recent: 'Zule
 
 export function libraryTitle() {
   const f = state.view.filter || 'all';
+  if (f.startsWith('status:')) return STATUS_LABEL[f.slice(7)] || 'Status';
   if (f.startsWith('col:')) return state.library.collections.find((c) => c.id === f.slice(4))?.name || 'Sammlung';
   return FILTER_TITLES[f] || 'Bibliothek';
 }
@@ -115,6 +116,8 @@ export function renderLibraryContent(host) {
     return;
   }
   const chips = [['all', 'Alle'], ['favorites', 'Favoriten'], ['exe', 'Windows'], ['appimage', 'AppImage'], ['native', 'Linux']];
+  const STATUS_CHIPS = [['playing', 'Spiele ich'], ['backlog', 'Will ich spielen'], ['paused', 'Pausiert'], ['done', 'Durchgespielt'], ['dropped', 'Abgebrochen']];
+  STATUS_CHIPS.forEach(([k, l]) => { if (state.library.games.some((g) => g.status === k)) chips.push(['status:' + k, l]); });
   if (state.library.games.some((g) => g.hidden)) chips.push(['hidden', 'Ausgeblendet']);
   const f = state.view.filter || 'all';
   const showChips = !f.startsWith('col:') && f !== 'recent';
@@ -165,6 +168,8 @@ function bindGameEvents(root) {
 }
 
 // ---------------- Detailseite ----------------
+const STATUS_LABEL = { backlog: 'Will ich spielen', playing: 'Spiele ich gerade', paused: 'Pausiert', done: 'Durchgespielt', dropped: 'Abgebrochen' };
+
 export function renderDetailTop(top) {
   top.innerHTML = '';
   top.style.display = 'none';
@@ -193,6 +198,8 @@ export function renderDetail(content) {
             <span class="chip">${kindLabel(g.kind)}</span>
             ${isExe ? `<span class="chip">${icon('wine', 12)} ${esc(proton?.name || 'Kein Proton')}</span>` : ''}
             ${g.favorite ? `<span class="chip accent">${icon('starFill', 12)} Favorit</span>` : ''}
+            ${g.status ? `<span class="chip" style="cursor:pointer" id="d-status">${icon('tag', 12)} ${esc(STATUS_LABEL[g.status] || g.status)}</span>` : ''}
+            ${g.framegen ? `<span class="chip">${icon('zap', 12)} Frame Gen x${g.framegen}</span>` : ''}
             ${g.collections.map((id) => state.library.collections.find((c) => c.id === id)).filter(Boolean).map((c) => `<span class="chip">${icon('layers', 12)} ${esc(c.name)}</span>`).join('')}
             ${running ? '<span class="chip ok"><span class="dot" style="width:7px;height:7px"></span> Läuft</span>' : ''}
           </div>
@@ -296,6 +303,7 @@ export function renderDetail(content) {
 
   content.querySelectorAll('[data-dt]').forEach((b) => b.onclick = () => { state.view.tab = b.dataset.dt; renderDetail(content); });
   content.querySelector('#d-back').onclick = () => nav({ name: 'library' });
+  content.querySelector('#d-status')?.addEventListener('click', () => import('./actions.js').then((m) => m.statusDialog(g)));
   content.querySelector('#d-play')?.addEventListener('click', () => launch(g));
   content.querySelector('#d-stop')?.addEventListener('click', () => stop(g));
   content.querySelector('#d-fav').onclick = () => toggleFavorite(g);

@@ -4,7 +4,7 @@ import { state, setSetting, save, saveNow, notify, invalidateStats, DEFAULT_SETT
 import { icon, esc, toast, confirmDialog, fmtRelative, fmtSize, h } from './ui.js';
 import { THEMES, ACCENTS, allThemes, applyTheme, parseThemeFile, THEME_TEMPLATE } from './themes.js';
 import { refreshProtons, protonLabel, runnerLabel, scanWatchFolders, scanDialog } from './actions.js';
-import { checkUpdates, REPO_URL } from './updates.js';
+import { checkUpdates, REPO_URL, installUpdate, restartNow } from './updates.js';
 
 let nav = () => {};
 let startTour = () => {};
@@ -40,7 +40,8 @@ export function renderSettings(content) {
   body.querySelectorAll('[data-set]').forEach((inp) => {
     inp.addEventListener('change', () => {
       const k = inp.dataset.set;
-      const v = inp.type === 'checkbox' ? inp.checked : inp.type === 'range' || inp.type === 'number' ? +inp.value : inp.value;
+      let v = inp.type === 'checkbox' ? inp.checked : inp.type === 'range' || inp.type === 'number' ? +inp.value : inp.value;
+      if (k === 'framegen') v = +v;
       setSetting(k, v);
       if (['reduceMotion', 'effects', 'petals', 'cardSize', 'ambient', 'lite'].includes(k)) applyTheme();
     });
@@ -161,6 +162,10 @@ function library(body) {
       <div style="margin-top:6px">${row('Beim Start prüfen', 'Beobachtete Ordner bei jedem Start durchsuchen', sw('scanOnStart', s.scanOnStart))}</div>
       ${s.scanIgnored.length ? row('Ignorierte Dateien', `${s.scanIgnored.length} Dateien werden beim Scan nicht mehr vorgeschlagen`, '<button class="btn small" id="l-unign">Zurücksetzen</button>') : ''}
     </div>
+    <div class="panel"><h3>${icon('sparkle', 17)} Artwork</h3>
+      ${row('Fehlende Cover generieren', 'Für alle Spiele ohne Cover einzigartiges Artwork erzeugen (Cover, Banner, Icon)', `<button class="btn" id="l-gen">${icon('sparkle', 14)} Generieren</button>`)}
+      <p class="hint" style="margin:6px 0 0">Tipp: Ein Bild aus dem Dateimanager direkt auf eine Spielkarte ziehen – dann kannst du es zuschneiden und als Cover, Banner, Logo oder Icon setzen.</p>
+    </div>
     <div class="panel"><h3>${icon('eye', 17)} Anzeige</h3>
       ${row('Ausgeblendete Spiele zeigen', 'Ausgeblendete Einträge auch unter „Alle“ anzeigen', sw('showHidden', s.showHidden))}
     </div>`;
@@ -169,6 +174,7 @@ function library(body) {
     if (p?.[0] && !s.watchFolders.includes(p[0])) { setSetting('watchFolders', [...s.watchFolders, p[0]]); library(body); rebind(body); scanWatchFolders(false); }
   };
   body.querySelector('#l-scan').onclick = () => scanWatchFolders(false);
+  body.querySelector('#l-gen').onclick = () => import('./artgen.js').then((m) => m.generateMissing());
   body.querySelectorAll('[data-wdel]').forEach((b) => b.onclick = () => { setSetting('watchFolders', s.watchFolders.filter((_, i) => i !== +b.dataset.wdel)); library(body); rebind(body); });
   body.querySelectorAll('[data-wscan]').forEach((b) => b.onclick = () => scanDialog(s.watchFolders[+b.dataset.wscan]));
   body.querySelector('#l-unign')?.addEventListener('click', () => { setSetting('scanIgnored', []); library(body); rebind(body); toast('Zurückgesetzt', 'Ignorierte Dateien werden wieder vorgeschlagen.'); });
@@ -191,14 +197,16 @@ function launch(body) {
         <span class="hint">Jedes Spiel bekommt darin einen eigenen Unterordner.</span></div>
       ${row('MangoHud standardmäßig', 'FPS-Anzeige für alle Spiele (pro Spiel änderbar)', sw('mangohud', s.mangohud))}
       ${row('GameMode standardmäßig', 'Leistungsmodus für alle Spiele (pro Spiel änderbar)', sw('gamemode', s.gamemode))}
+      ${row('Frame Generation standardmäßig', `Zusätzliche Bilder über lsfg-vk für alle Spiele (pro Spiel änderbar)${sys.lsfg ? '' : ' · lsfg-vk nicht gefunden'}`, `<select class="input" data-set="framegen" style="width:auto">${[[0, 'Aus'], [2, 'x2'], [3, 'x3'], [4, 'x4']].map(([v, l]) => `<option value="${v}" ${+s.framegen === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}
     </div>
     <div class="panel"><h3>${icon('layers', 17)} Gefundene Proton-Versionen <span class="r"><button class="btn small" id="pr-ref">${icon('refresh', 14)} Neu suchen</button></span></h3>
       ${state.protons.length ? `<div class="proton-list">${state.protons.map((p) => `<div class="proton-item">${icon('wine', 16)}<div style="flex:1;min-width:0"><b>${esc(p.name)}</b> ${p.experimental ? '<span class="chip accent">Experimental</span>' : ''} <span class="chip">${esc(p.source)}</span><div class="p">${esc(p.path)}</div></div>${p.runtime ? '<span class="chip ok" title="Steam Linux Runtime vorhanden">Runtime</span>' : ''}</div>`).join('')}</div>`
         : `<p class="hint" style="margin:0">Keine Proton-Version gefunden. Installiere in Steam z. B. <b>Proton Experimental</b> (Bibliothek → Werkzeuge) oder <b>GE-Proton</b> mit ProtonUp-Qt.</p>`}
+      <p class="hint" style="margin:10px 0 0">${icon('info', 12)} Frame Generation nutzt <b>lsfg-vk</b> (Linux-Umsetzung von Lossless Scaling). Dafür muss <b>Lossless Scaling</b> in Steam gekauft und installiert sein und lsfg-vk eingerichtet werden (z. B. über das Decky-Plugin „Lossless Scaling“). Funktioniert mit Vulkan/DXVK-Spielen.</p>
     </div>
     <div class="panel"><h3>${icon('zap', 17)} Werkzeuge auf diesem System</h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${[['umu-launcher', !!sys.umu], ['Steam Linux Runtime', !!sys.steamRuntime], ['MangoHud', sys.mangohud], ['GameMode', sys.gamemode], ['gamescope', sys.gamescope], ['winetricks', sys.winetricks]].map(([n, ok]) => `<span class="chip ${ok ? 'ok' : ''}">${icon(ok ? 'check' : 'x', 12)} ${n}</span>`).join('')}
+        ${[['umu-launcher', !!sys.umu], ['Steam Linux Runtime', !!sys.steamRuntime], ['lsfg-vk (Frame Gen)', !!sys.lsfg], ['Lossless Scaling', !!sys.losslessScaling], ['MangoHud', sys.mangohud], ['GameMode', sys.gamemode], ['gamescope', sys.gamescope], ['winetricks', sys.winetricks]].map(([n, ok]) => `<span class="chip ${ok ? 'ok' : ''}">${icon(ok ? 'check' : 'x', 12)} ${n}</span>`).join('')}
       </div>
       <p class="hint" style="margin:12px 0 0">Steam-Ordner: ${esc(sys.steamRoot || 'nicht gefunden')}</p>
     </div>`;
@@ -226,14 +234,30 @@ function updates(body) {
     </div>
     ${u ? `<div class="panel" style="border-color:rgba(var(--accent-rgb),.5)"><h3>${icon('sparkle', 17)} Neue Version: v${esc(u.version)} <span class="r chip accent">${u.published ? new Date(u.published).toLocaleDateString('de-DE') : ''}</span></h3>
       <div class="changelog">${esc(u.body || 'Keine Patchnotes.')}</div>
-      <div style="display:flex;gap:10px;margin-top:14px">
-        <button class="btn primary" id="u-dl">${icon('download', 16)} AppImage herunterladen${u.size ? ` (${fmtSize(u.size)})` : ''}</button>
-        <button class="btn" id="u-page">${icon('external', 16)} Release-Seite</button>
-      </div>
-      <p class="hint" style="margin:12px 0 0">Nach dem Download einfach die alte AppImage durch die neue ersetzen – deine Bibliothek und Statistik bleiben erhalten.</p></div>` : ''}`;
+      <div id="u-box" style="margin-top:14px"></div>
+      <p class="hint" style="margin:12px 0 0">${icon('shield', 12)} Ein Klick: Download, Prüfung (SHA-256), Austausch der AppImage, Neustart. Bibliothek, Artwork und Statistik bleiben erhalten.</p></div>` : ''}`;
   body.querySelector('#u-check').onclick = async (e) => { e.currentTarget.disabled = true; await checkUpdates({ manual: true }); updates(body); rebindPlain(body); };
-  body.querySelector('#u-dl')?.addEventListener('click', () => invoke('open_path', { path: u.download }));
-  body.querySelector('#u-page')?.addEventListener('click', () => invoke('open_path', { path: u.url }));
+  const box = body.querySelector('#u-box');
+  const drawBox = () => {
+    if (!box || !box.isConnected) return;
+    const p = state.updateProgress || {};
+    if (p.ready) {
+      box.innerHTML = `<div style="display:flex;gap:10px;align-items:center"><span class="chip ok">${icon('check', 12)} Installiert</span><button class="btn primary" id="u-restart">${icon('refresh', 16)} Jetzt neu starten</button></div>`;
+      box.querySelector('#u-restart').onclick = restartNow;
+    } else if (p.running) {
+      const pct = p.total ? Math.min(100, Math.round((p.done / p.total) * 100)) : 0;
+      box.innerHTML = `<div class="progress"><i style="width:${pct}%"></i></div><div class="hint" style="margin-top:6px">${p.verifying ? 'Prüfe Datei …' : `Lade … ${pct}% (${fmtSize(p.done || 0)} von ${fmtSize(p.total || 0)})`}</div>`;
+    } else {
+      box.innerHTML = `<div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn primary" id="u-go">${icon('download', 16)} Jetzt aktualisieren${u.size ? ` (${fmtSize(u.size)})` : ''}</button>
+        <button class="btn" id="u-page">${icon('external', 16)} Release-Seite</button></div>
+        ${p.error ? `<p class="hint" style="color:var(--danger);margin:8px 0 0">${esc(p.error)}</p>` : ''}`;
+      box.querySelector('#u-go').onclick = () => installUpdate();
+      box.querySelector('#u-page').onclick = () => invoke('open_path', { path: u.url });
+    }
+  };
+  drawBox();
+  window.__lakuenUpdateBox = drawBox;
 }
 
 function data(body) {

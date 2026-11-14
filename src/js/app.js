@@ -8,11 +8,12 @@ import {
   newCollection, collectionMenu, launch, randomGame,
 } from './actions.js';
 import { openEditor, isEditorOpen, handleEditorDrop } from './editor.js';
+import { askDropArtwork } from './artwork.js';
 import { wireLibrary, renderLibraryTop, renderLibraryContent, renderDetailTop, renderDetail } from './library.js';
 import { wireStats, renderStatsTop, renderStats } from './stats.js';
 import { wireSettings, renderSettingsTop, renderSettings } from './settings.js';
 import { wireExtras, openPalette, closePalette, isPaletteOpen, startTour, isTourOpen, initGamepad } from './extras.js';
-import { autoCheck } from './updates.js';
+import { autoCheck, installUpdate, restartNow, prettyVersion } from './updates.js';
 
 const app = document.getElementById('app');
 let sidebarEl, topEl, contentEl;
@@ -58,7 +59,8 @@ function renderSidebar() {
     <div class="sidebar-foot">
       <div class="running-pill ${rg ? 'on' : ''}" id="sb-running">${rg ? `<span class="dot"></span><div style="min-width:0"><div class="t">Läuft · <span data-live="${rg.id}">${fmtClock((Date.now() - state.running[rg.id].started) / 1000)}</span></div><div class="n">${esc(rg.name)}</div></div>` : ''}</div>
       ${item('settings', 'Einstellungen', 'settings', v.name === 'settings', state.update ? '<span class="count" style="color:var(--accent)">●</span>' : '')}
-      <div class="version-tag"><span>v${esc(state.version)}</span>${state.update ? `<span class="upd" id="sb-upd">Update v${esc(state.update.version)}</span>` : '<span>Dominic Lesina x Claude</span>'}</div>
+      ${state.update ? `<button class="update-pill" id="sb-upd">${icon(state.updateProgress?.ready ? 'refresh' : 'download', 16)}<div><b>${state.updateProgress?.ready ? 'Neu starten' : state.updateProgress?.running ? `Update lädt … ${state.updateProgress.total ? Math.round((state.updateProgress.done || 0) / state.updateProgress.total * 100) : 0}%` : 'Update verfügbar'}</b><span>v${esc(state.update.version)} · 1 Klick</span></div></button>` : ''}
+      <div class="version-tag"><span>${esc(prettyVersion(state.version))}</span><span>Dominic Lesina x Claude</span></div>
     </div>`;
   sidebarEl.querySelectorAll('[data-nav]').forEach((b) => b.onclick = () => {
     const k = b.dataset.nav;
@@ -73,7 +75,11 @@ function renderSidebar() {
   sidebarEl.querySelector('#sb-search').onclick = openPalette;
   sidebarEl.querySelector('#sb-newcol').onclick = newCollection;
   sidebarEl.querySelector('#sb-running').onclick = () => rg && navigate({ name: 'game', gameId: rg.id });
-  sidebarEl.querySelector('#sb-upd')?.addEventListener('click', () => navigate({ name: 'settings', settingsSection: 'updates' }));
+  sidebarEl.querySelector('#sb-upd')?.addEventListener('click', () => {
+    if (state.updateProgress?.ready) return restartNow();
+    navigate({ name: 'settings', settingsSection: 'updates' });
+    installUpdate();
+  });
 }
 
 function render(scrollTop = false) {
@@ -112,6 +118,7 @@ function updateAmbient() {
 
 // Bei Datenänderungen gezielt neu zeichnen (Suchfeld behält den Fokus)
 subscribe((what) => {
+  if (what === 'update-progress') { window.__lakuenUpdateBox?.(); renderSidebar(); return; }
   if (what === 'settings') { applyTheme(); }
   const active = document.activeElement;
   const searching = active?.id === 'lib-search';
@@ -181,26 +188,66 @@ window.addEventListener('contextmenu', (e) => {
 });
 
 // ---------- Drag & Drop ----------
+const IMG = /\.(png|jpe?g|webp|gif|svg|avif|bmp)$/i;
+
+/** Element unter der Drop-Position finden (Tauri liefert physische Pixel) */
+function cardAt(pos) {
+  if (!pos) return null;
+  const tries = [[pos.x / devicePixelRatio, pos.y / devicePixelRatio], [pos.x, pos.y]];
+  for (const [x, y] of tries) {
+    const el = document.elementFromPoint(x, y);
+    const card = el?.closest?.('[data-id], [data-continue]');
+    if (card) return card;
+  }
+  return null;
+}
+
 async function initDrop() {
   const zone = document.getElementById('drop');
   const hint = document.getElementById('drop-hint');
+  let images = false;
+  let target = null;
+  const setTarget = (el) => {
+    if (target === el) return;
+    target?.classList.remove('drop-target');
+    target = el;
+    target?.classList.add('drop-target');
+    if (images && !isEditorOpen()) {
+      const g = el ? gameById(el.dataset.id || el.dataset.continue) : (state.view.name === 'game' ? gameById(state.view.gameId) : null);
+      hint.textContent = g ? `Loslassen: Artwork für „${g.name}“` : 'Bild auf ein Spiel ziehen, um es als Artwork zu verwenden';
+    }
+  };
   await onDragDrop(async (ev) => {
     if (ev.type === 'enter') {
-      const imgs = ev.paths.every((p) => /\.(png|jpe?g|webp|gif|svg|avif|bmp)$/i.test(p));
-      hint.textContent = isEditorOpen() && imgs ? 'Bild wird als Artwork übernommen' : imgs ? 'Öffne zuerst ein Spiel im Editor, um Artwork zu setzen' : 'AppImages und .exe-Dateien werden zur Bibliothek hinzugefügt';
+      images = ev.paths.length > 0 && ev.paths.every((p) => IMG.test(p));
+      zone.classList.toggle('mini', images);
+      hint.textContent = isEditorOpen() && images ? 'Bild wird als Artwork übernommen'
+        : images ? 'Bild auf ein Spiel ziehen, um es als Artwork zu verwenden'
+        : 'AppImages und .exe-Dateien werden zur Bibliothek hinzugefügt';
       zone.classList.add('on');
-    } else if (ev.type === 'leave') zone.classList.remove('on');
-    else if (ev.type === 'drop') {
+    } else if (ev.type === 'over') {
+      if (images && !isEditorOpen()) setTarget(cardAt(ev.position));
+    } else if (ev.type === 'leave') {
       zone.classList.remove('on');
+      setTarget(null);
+    } else if (ev.type === 'drop') {
+      zone.classList.remove('on');
+      const card = images ? (target || cardAt(ev.position)) : null;
+      setTarget(null);
       if (!ev.paths?.length) return;
       if (await handleEditorDrop(ev.paths, ev.position)) return;
-      const files = ev.paths.filter((p) => !/\.(png|jpe?g|webp|gif|svg|avif|bmp)$/i.test(p));
+      const imgs = ev.paths.filter((p) => IMG.test(p));
+      const files = ev.paths.filter((p) => !IMG.test(p));
       if (files.length) {
         // Ordner? → Scan anbieten
         const info = await invoke('file_info', { path: files[0] }).catch(() => null);
         if (info && info.exists && !info.isFile) { scanDialog(files[0]); return; }
         addFromPaths(files);
-      } else toast('Bild abgelegt', 'Öffne ein Spiel im Editor (Artwork-Tab), um Bilder zuzuweisen.');
+        return;
+      }
+      const gameId = card ? (card.dataset.id || card.dataset.continue) : (state.view.name === 'game' ? state.view.gameId : null);
+      if (imgs.length && gameId) askDropArtwork(gameId, imgs[0]);
+      else if (imgs.length) toast('Auf ein Spiel ziehen', 'Lass das Bild direkt über einer Spielkarte los – dann wird es dessen Artwork.');
     }
   });
 }

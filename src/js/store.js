@@ -20,6 +20,7 @@ export const DEFAULT_SETTINGS = {
   defaultRunner: 'auto',
   mangohud: false,
   gamemode: false,
+  framegen: 0,
   prefixBase: '',
   minimizeOnLaunch: false,
   restoreOnExit: true,
@@ -99,6 +100,9 @@ export function normalizeGame(g) {
     mangohud: g.mangohud ?? null,
     gamemode: g.gamemode ?? null,
     fsr: !!g.fsr,
+    framegen: g.framegen ?? null,
+    framegenPerf: !!g.framegenPerf,
+    status: g.status || '',
     wrapper: g.wrapper || '',
     preScript: g.preScript || '',
     postScript: g.postScript || '',
@@ -227,6 +231,7 @@ export function visibleGames() {
   else if (filter === 'recent') list = list.filter((g) => lastPlayed(g) > 0);
   else if (filter === 'exe' || filter === 'appimage' || filter === 'native') list = list.filter((g) => g.kind === filter);
   else if (filter === 'hidden') list = list.filter((g) => g.hidden);
+  else if (filter?.startsWith('status:')) list = list.filter((g) => g.status === filter.slice(7));
   else if (filter?.startsWith('col:')) list = list.filter((g) => g.collections.includes(filter.slice(4)));
   if (q) list = list.filter((g) => g.name.toLowerCase().includes(q) || g.path.toLowerCase().includes(q));
   const sort = filter === 'recent' ? 'recent' : state.settings.sort;

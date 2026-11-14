@@ -1,6 +1,6 @@
 [package]
 name = "lakuenlauncher"
-version = "0.1.1"
+version = "0.1.2"
 description = "LakuenLauncher – lokaler Spiele- und App-Launcher für SteamOS/Linux"
 authors = ["Dominic Lesina", "Claude"]
 license = "MIT"

@@ -33,6 +33,7 @@ export function openPalette() {
     { label: 'Einstellungen', sub: 'Strg+,', icon: 'settings', run: () => nav({ name: 'settings' }) },
     { label: 'Zufälliges Spiel', sub: 'Strg+R', icon: 'random', run: randomGame },
     { label: 'Nach Updates suchen', icon: 'download', run: () => checkUpdates({ manual: true }) },
+    { label: 'Fehlende Cover generieren', icon: 'sparkle', run: () => import('./artgen.js').then((m) => m.generateMissing()) },
     { label: 'Tutorial zeigen', icon: 'sparkle', run: () => { nav({ name: 'library', filter: 'all' }); setTimeout(() => startTour(true), 250); } },
     ...allThemes().map((t) => ({ label: `Theme: ${t.name}`, sub: t.mode === 'light' ? 'Hell' : 'Dunkel', icon: 'palette', run: () => { setSetting('theme', t.id); applyTheme(); } })),
   ];

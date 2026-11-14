@@ -26,7 +26,7 @@ export async function onDragDrop(cb) {
   if (!isTauri) return;
   // Tauri 2: Datei-Drops liefern Pfade über eigene Events
   await T.event.listen('tauri://drag-enter', (e) => cb({ type: 'enter', paths: e.payload?.paths || [] }));
-  await T.event.listen('tauri://drag-over', () => cb({ type: 'over' }));
+  await T.event.listen('tauri://drag-over', (e) => cb({ type: 'over', position: e.payload?.position }));
   await T.event.listen('tauri://drag-leave', () => cb({ type: 'leave' }));
   await T.event.listen('tauri://drag-drop', (e) => cb({ type: 'drop', paths: e.payload?.paths || [], position: e.payload?.position }));
 }
@@ -125,6 +125,8 @@ async function mock(cmd, a) {
     case 'path_exists': return true;
     case 'file_info': return { exists: true, isFile: true, size: 0, modified: 0 };
     case 'list_backups': return [];
+    case 'save_artwork_data': return a.data;
+    case 'can_self_update': return false;
     default: return null;
   }
 }

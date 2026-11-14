@@ -7,6 +7,7 @@ mod proton;
 mod runner;
 mod scan;
 mod store;
+mod update;
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -121,6 +122,11 @@ fn main() {
             runner::get_prefix_path,
             runner::delete_prefix,
             scan::scan_folder,
+            update::read_image_data_url,
+            update::save_artwork_data,
+            update::can_self_update,
+            update::self_update,
+            update::restart_app,
         ])
         .run(tauri::generate_context!())
         .expect("LakuenLauncher konnte nicht gestartet werden");

@@ -3,6 +3,10 @@ import { invoke, pickFiles, fileSrc, isTauri } from './api.js';
 import { state, gameById, updateGame, guessKind, notify } from './store.js';
 import { openModal, esc, icon, toast, kindLabel } from './ui.js';
 import { protonLabel, runnerLabel, refreshProtons } from './actions.js';
+import { applyArtworkFile, recropArtwork } from './artwork.js';
+import { openGenerator } from './artgen.js';
+
+export const STATUSES = [['', 'Kein Status'], ['backlog', 'Will ich spielen'], ['playing', 'Spiele ich gerade'], ['paused', 'Pausiert'], ['done', 'Durchgespielt'], ['dropped', 'Abgebrochen']];
 
 const ART = {
   cover: { label: 'Cover', hint: 'Hochformat 2:3 · z. B. 600 × 900' },
@@ -96,7 +100,9 @@ function paneGeneral(pane, d) {
       <label class="toggle-line"><div><b>Favorit</b><span>Oben in der Bibliothek anpinnen</span></div><span class="switch"><input type="checkbox" data-k="favorite" ${d.favorite ? 'checked' : ''}><span></span></span></label>
       <label class="toggle-line"><div><b>Ausblenden</b><span>Nicht in „Alle“ anzeigen</span></div><span class="switch"><input type="checkbox" data-k="hidden" ${d.hidden ? 'checked' : ''}><span></span></span></label>
     </div>
-    <div class="field" style="margin-top:10px"><label>Notizen</label><textarea class="input" data-k="notes" placeholder="Cheats, Controller-Belegung, wo du stehen geblieben bist …" style="font-family:var(--font);font-size:13.5px">${esc(d.notes)}</textarea></div>`;
+    <div class="field" style="margin-top:10px"><label>Status</label>
+      <select class="input" data-k="status">${STATUSES.map(([v, l]) => `<option value="${v}" ${d.status === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    <div class="field"><label>Notizen</label><textarea class="input" data-k="notes" placeholder="Cheats, Controller-Belegung, wo du stehen geblieben bist …" style="font-family:var(--font);font-size:13.5px">${esc(d.notes)}</textarea></div>`;
   bindInputs(pane, d);
   pane.querySelector('#ed-pick').onclick = async () => {
     const p = await pickFiles({ title: 'Spieldatei wählen', filters: [{ name: 'Spiele & Apps', extensions: ['AppImage', 'appimage', 'exe', 'EXE', 'sh', 'x86_64', 'bat', 'msi'] }, { name: 'Alle Dateien', extensions: ['*'] }] });
@@ -117,7 +123,7 @@ function slotHTML(kind, d, cls = '') {
   const src = d.art?.[kind];
   return `<div class="art-slot art-${kind} ${cls}" data-slot="${kind}">
     <span class="tag">${ART[kind].label}</span>
-    ${src ? `<img src="${esc(fileSrc(src))}" alt=""><button class="rm" data-rm="${kind}" title="Entfernen">${icon('x', 14)}</button>`
+    ${src ? `<img src="${esc(fileSrc(src))}" alt=""><button class="rm" data-rm="${kind}" title="Entfernen">${icon('x', 14)}</button><button class="rm crop" data-crop="${kind}" title="Zuschneiden & skalieren">${icon('crop', 14)}</button>`
       : `<div class="lab">${icon('image', 26)}<span>${ART[kind].label} wählen<br>oder hierher ziehen</span><span class="hint">${ART[kind].hint}</span></div>`}
   </div>`;
 }
@@ -132,10 +138,13 @@ function paneArt(pane, d) {
         <div class="art-small">${slotHTML('logo', d, 'contain')}${slotHTML('icon', d, 'contain')}</div>
       </div>
     </div>
-    <p class="hint" style="margin:14px 0 0">${icon('sparkle', 13)} Tipp: Ohne Cover erzeugt der Launcher automatisch ein farbiges Cover aus dem Namen.</p>`;
+    <div style="display:flex;align-items:center;gap:12px;margin-top:14px">
+      <button class="btn" id="ed-gen">${icon('sparkle', 16)} Artwork generieren</button>
+      <span class="hint">Kein passendes Bild? Lass dir ein einzigartiges Cover, Banner und Icon erzeugen – oder ziehe ein Bild direkt auf eine Spielkarte in der Bibliothek.</span>
+    </div>`;
   pane.querySelectorAll('[data-slot]').forEach((slot) => {
     slot.addEventListener('click', async (e) => {
-      if (e.target.closest('[data-rm]')) return;
+      if (e.target.closest('[data-rm]') || e.target.closest('[data-crop]')) return;
       const kind = slot.dataset.slot;
       if (!isTauri) { toast('Demo-Modus', 'Bildauswahl gibt es nur in der App.'); return; }
       const p = await pickFiles({ title: `${ART[kind].label} wählen`, filters: IMG_FILTER });
@@ -144,6 +153,8 @@ function paneArt(pane, d) {
     slot.addEventListener('mouseenter', () => { current.hoverSlot = slot.dataset.slot; });
     slot.addEventListener('mouseleave', () => { current.hoverSlot = null; });
   });
+  pane.querySelector('#ed-gen').onclick = () => openGenerator(current.id, syncArtFromGame);
+  pane.querySelectorAll('[data-crop]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); setArt(b.dataset.crop, null, { recrop: true }); });
   pane.querySelectorAll('[data-rm]').forEach((b) => b.onclick = (e) => {
     e.stopPropagation();
     const kind = b.dataset.rm;
@@ -154,16 +165,21 @@ function paneArt(pane, d) {
   });
 }
 
-export async function setArt(kind, src) {
+export async function setArt(kind, src, opts = {}) {
   if (!current) return;
-  try {
-    const dest = await invoke('import_artwork', { gameId: current.id, kind, src });
-    current.draft.art = { ...current.draft.art, [kind]: dest };
-    // Artwork sofort übernehmen, damit es auch ohne „Speichern“ nicht verloren geht
-    const g = gameById(current.id);
-    if (g) { g.art = { ...g.art, [kind]: dest }; updateGame(g.id, { art: g.art }); }
-    if (current.tab === 'art') render();
-  } catch (e) { toast('Bild nicht übernommen', String(e), { type: 'err' }); }
+  const id = current.id;
+  // Zuschneiden & speichern (wird sofort am Spiel gespeichert, auch ohne „Speichern“)
+  const dest = opts.recrop ? await recropArtwork(id, kind) : await applyArtworkFile(id, kind, src, { crop: opts.crop !== false });
+  if (!dest || !current || current.id !== id) return;
+  current.draft.art = { ...current.draft.art, [kind]: dest };
+  if (current.tab === 'art') render();
+}
+
+function syncArtFromGame() {
+  if (!current) return;
+  const g = gameById(current.id);
+  if (g) current.draft.art = { ...g.art };
+  if (current.tab === 'art') render();
 }
 
 /** Drag & Drop von Bildern während der Editor offen ist. */
@@ -225,6 +241,9 @@ function paneLaunch(pane, d) {
     <div class="panel" style="padding:6px 16px">
       <div class="toggle-line"><div><b>MangoHud</b><span>FPS- & Leistungsanzeige${sys.mangohud === false ? ' · nicht installiert' : ''}</span></div>${tri('mangohud', d, 'Standard')}</div>
       <div class="toggle-line"><div><b>GameMode</b><span>Leistungsoptimierung von Feral${sys.gamemode === false ? ' · nicht installiert' : ''}</span></div>${tri('gamemode', d, 'Standard')}</div>
+      <div class="toggle-line"><div><b>Frame Generation</b><span>Zusätzliche Bilder per lsfg-vk (Lossless Scaling)${sys.lsfg === false ? ' · lsfg-vk nicht gefunden' : ''}${sys.losslessScaling === false ? ' · Lossless Scaling (Steam) fehlt' : ''}</span></div>
+        <span class="tri" data-fg>${[[null, 'Standard'], [0, 'Aus'], [2, 'x2'], [3, 'x3'], [4, 'x4']].map(([v, l]) => `<button data-v="${v}" class="${(d.framegen ?? null) === v ? 'on' : ''}">${l}</button>`).join('')}</span></div>
+      <label class="toggle-line"><div><b>Frame-Gen-Leistungsmodus</b><span>Schneller, etwas weniger Bildqualität (LSFG_PERF_MODE)</span></div><span class="switch"><input type="checkbox" data-k="framegenPerf" ${d.framegenPerf ? 'checked' : ''}><span></span></span></label>
       ${isExe ? `<label class="toggle-line"><div><b>FSR-Hochskalierung</b><span>AMD FidelityFX Super Resolution im Vollbild (WINE_FULLSCREEN_FSR)</span></div><span class="switch"><input type="checkbox" data-k="fsr" ${d.fsr ? 'checked' : ''}><span></span></span></label>` : ''}
     </div>
     <div class="field" style="margin-top:16px"><label>Wrapper-Befehl (optional)</label><input class="input" data-k="wrapper" value="${esc(d.wrapper)}" placeholder="z. B. gamescope -W 1920 -H 1080 -f --">
@@ -234,6 +253,10 @@ function paneLaunch(pane, d) {
     d[t.dataset.tri] = JSON.parse(b.dataset.v);
     t.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
   }));
+  pane.querySelectorAll('[data-fg] button').forEach((b) => b.onclick = () => {
+    d.framegen = JSON.parse(b.dataset.v);
+    pane.querySelectorAll('[data-fg] button').forEach((x) => x.classList.toggle('on', x === b));
+  });
   pane.querySelector('#ed-rp')?.addEventListener('click', async () => { await refreshProtons(); render(); toast('Proton-Liste aktualisiert', `${state.protons.length} Versionen gefunden`); });
   pane.querySelector('#ed-pp')?.addEventListener('click', async () => {
     const p = await pickFiles({ directory: true, title: 'Prefix-Ordner wählen' });

@@ -53,6 +53,7 @@ export function resolveRequest(g) {
     gameId: g.id, name: g.name, path: g.path, kind: g.kind, args: g.args || '', workdir: g.workdir || null,
     env: g.env || {}, runner: runner || 'auto', protonPath: proton?.path || null, prefixPath: prefix || null,
     mangohud: g.mangohud ?? s.mangohud, gamemode: g.gamemode ?? s.gamemode, fsr: !!g.fsr,
+    framegen: Number(g.framegen ?? s.framegen ?? 0) || 0, framegenPerf: !!g.framegenPerf,
     wrapper: g.wrapper || null, preScript: g.preScript || null, postScript: g.postScript || null,
     minimizeOnLaunch: !!s.minimizeOnLaunch, restoreOnExit: !!s.restoreOnExit,
   };
@@ -336,6 +337,8 @@ export function gameMenu(x, y, g) {
     { icon: 'info', label: 'Details', onClick: () => nav({ name: 'game', gameId: g.id }) },
     { icon: 'edit', label: 'Bearbeiten', onClick: () => editGame(g.id) },
     { icon: 'image', label: 'Artwork ändern', onClick: () => editGame(g.id, 'art') },
+    { icon: 'sparkle', label: 'Artwork generieren', onClick: () => import('./artgen.js').then((m) => m.openGenerator(g.id)) },
+    { icon: 'tag', label: 'Status …', onClick: () => statusDialog(g) },
     '-',
     { icon: g.favorite ? 'starFill' : 'star', label: g.favorite ? 'Aus Favoriten entfernen' : 'Zu Favoriten', onClick: () => toggleFavorite(g) },
     { icon: 'layers', label: 'Sammlungen …', onClick: () => addToCollection(g) },
@@ -357,3 +360,12 @@ export async function randomGame() {
 }
 
 export { fmtSize };
+
+export async function statusDialog(g) {
+  const { STATUSES } = await import('./editor.js');
+  const body = document.createElement('div');
+  body.className = 'kind-pick';
+  body.innerHTML = STATUSES.map(([v, l]) => `<button class="kind-opt ${g.status === v ? 'on' : ''}" data-s="${v}"><b>${l}</b></button>`).join('');
+  const m = openModal({ title: `Status: ${esc(g.name)}`, body, cls: 'narrow', footer: null });
+  body.querySelectorAll('[data-s]').forEach((b) => b.onclick = () => { updateGame(g.id, { status: b.dataset.s }); m.close(); });
+}

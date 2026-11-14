@@ -2,6 +2,24 @@
 
 Alle Änderungen an LakuenLauncher. Versionierung: 0.1.0, 0.1.1, … bis zur Version 1.
 
+## [0.1.2] – 2026-11-14
+
+### Artwork
+- **Bild direkt auf ein Spiel ziehen**: Bild aus dem Dateimanager auf eine Spielkarte (oder in die Detailseite) ziehen – die Karte leuchtet auf, nach einer kurzen Rückfrage (Cover vorausgewählt, alternativ Banner/Logo/Icon) wird es übernommen
+- **Zuschneiden & Skalieren**: Bild im Rahmen verschieben und zoomen (Maus, Mausrad, Pfeiltasten), „Füllen“, „Einpassen“, „Zentrieren“, freie Flächen unscharf, dunkel oder transparent – Ergebnis passt exakt in den Kasten (Cover 600×900, Banner 1920×620, Icon 512×512, Logo 1000×400)
+- Vorhandenes Artwork jederzeit neu zuschneiden (Knopf am Bild im Editor)
+- **Artwork generieren**: einzigartige Cover, Banner und Icons aus dem Spielnamen in 7 Stilen (Wellen, Geometrie, Sakura-Nacht, Synthwave, Kosmos, Pixel, Aurora) – neu würfeln, Namen ein-/ausblenden; komplett lokal
+- „Fehlende Cover generieren“ für die ganze Bibliothek (Einstellungen → Bibliothek oder Strg+K)
+
+### Spielen
+- **Frame Generation** über lsfg-vk (Lossless Scaling für Linux): pro Spiel Aus / x2 / x3 / x4, plus Leistungsmodus; Standard in den Einstellungen; wird automatisch als Startoption gesetzt
+- Erkennung von lsfg-vk und Lossless Scaling in „Werkzeuge auf diesem System“
+- **Spielstatus**: Will ich spielen, Spiele ich gerade, Pausiert, Durchgespielt, Abgebrochen – mit Filtern in der Bibliothek
+
+### Updates
+- **1-Klick-Update im Launcher**: Download, Prüfung per SHA-256, Austausch der AppImage und Neustart – ohne manuellen Download. Bibliothek, Artwork und Statistik bleiben erhalten
+- Fortschrittsanzeige in der Seitenleiste und in den Einstellungen
+
 ## [0.1.1] – 2026-11-14
 
 ### Flüssiger & sparsamer
